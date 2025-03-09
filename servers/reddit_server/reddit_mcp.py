@@ -274,6 +274,68 @@ async def fetch_reddit_data(endpoint: str, params: Dict[str, str] = None, authen
                     except:
                         logger.info(f"API-{request_id}: POST successful but no JSON response")
                         return {"status": "success", "status_code": status_code}
+            elif method == "PUT":
+                async with session.put(url, headers=headers, data=data) as response:
+                    status_code = response.status
+                    elapsed_time = time.time() - start_time
+                    
+                    # Add to request history
+                    request_history.append({
+                        "id": request_id,
+                        "timestamp": datetime.now().isoformat(),
+                        "method": method,
+                        "url": url,
+                        "status": status_code,
+                        "elapsed_time": elapsed_time
+                    })
+                    
+                    if len(request_history) > 100:
+                        request_history.pop(0)
+                    
+                    logger.info(f"API-{request_id}: Response status {status_code} ({elapsed_time:.2f}s)")
+                    
+                    if not response.ok:
+                        response_text = await response.text()
+                        logger.error(f"API-{request_id}: HTTP error! status: {status_code}, response: {response_text}")
+                        raise ValueError(f"HTTP error! status: {status_code}, response: {response_text}")
+                    
+                    try:
+                        response_data = await response.json()
+                        return response_data
+                    except:
+                        logger.info(f"API-{request_id}: PUT successful but no JSON response")
+                        return {"status": "success", "status_code": status_code}
+            elif method == "DELETE":
+                async with session.delete(url, headers=headers) as response:
+                    status_code = response.status
+                    elapsed_time = time.time() - start_time
+                    
+                    # Add to request history
+                    request_history.append({
+                        "id": request_id,
+                        "timestamp": datetime.now().isoformat(),
+                        "method": method,
+                        "url": url,
+                        "status": status_code,
+                        "elapsed_time": elapsed_time
+                    })
+                    
+                    if len(request_history) > 100:
+                        request_history.pop(0)
+                    
+                    logger.info(f"API-{request_id}: Response status {status_code} ({elapsed_time:.2f}s)")
+                    
+                    if not response.ok:
+                        response_text = await response.text()
+                        logger.error(f"API-{request_id}: HTTP error! status: {status_code}, response: {response_text}")
+                        raise ValueError(f"HTTP error! status: {status_code}, response: {response_text}")
+                    
+                    try:
+                        response_data = await response.json()
+                        return response_data
+                    except:
+                        logger.info(f"API-{request_id}: DELETE successful but no JSON response")
+                        return {"status": "success", "status_code": status_code}
     except Exception as e:
         logger.exception(f"API-{request_id}: Error fetching data from Reddit: {str(e)}")
         raise
@@ -293,6 +355,12 @@ def format_post(post: Dict[str, Any]) -> Dict[str, Any]:
         "is_video": data.get("is_video", False),
         "is_image": data.get("post_hint", "") == "image",
         "num_comments": data.get("num_comments", 0),
+        "id": data.get("id", ""),
+        "fullname": data.get("name", ""),
+        "saved": data.get("saved", False),
+        "stickied": data.get("stickied", False),
+        "locked": data.get("locked", False),
+        "over_18": data.get("over_18", False),
     }
     logger.debug(f"Formatted post: {formatted['title']}")
     return formatted
@@ -306,14 +374,84 @@ def format_comment(comment: Dict[str, Any]) -> Dict[str, Any]:
     
     data = comment.get("data", {})
     formatted = {
+        "id": data.get("id", ""),
+        "fullname": data.get("name", ""),
         "author": data.get("author", ""),
         "body": data.get("body", ""),
+        "body_html": data.get("body_html", ""),
         "upvotes": data.get("ups", 0),
         "created": datetime.fromtimestamp(data.get("created_utc", 0)).isoformat(),
         "edited": bool(data.get("edited", False)),
         "permalink": f"https://www.reddit.com{data.get('permalink', '')}" if data.get("permalink") else None,
+        "saved": data.get("saved", False),
+        "stickied": data.get("stickied", False),
     }
+    
+    # Format any replies
+    if data.get("replies") and isinstance(data["replies"], dict) and data["replies"].get("data") and data["replies"]["data"].get("children"):
+        formatted["replies"] = [format_comment(reply) for reply in data["replies"]["data"]["children"]]
+    else:
+        formatted["replies"] = []
+    
     logger.debug(f"Formatted comment from: {formatted['author']}")
+    return formatted
+
+# Format subreddit data for output
+def format_subreddit(subreddit: Dict[str, Any]) -> Dict[str, Any]:
+    """Format a subreddit for consistent output."""
+    data = subreddit.get("data", {})
+    formatted = {
+        "display_name": data.get("display_name", ""),
+        "title": data.get("title", ""),
+        "public_description": data.get("public_description", ""),
+        "subscribers": data.get("subscribers", 0),
+        "created": datetime.fromtimestamp(data.get("created_utc", 0)).isoformat(),
+        "url": data.get("url", ""),
+        "over18": data.get("over18", False),
+        "description": data.get("description", ""),
+        "is_default": data.get("is_default", False),
+        "user_is_subscriber": data.get("user_is_subscriber", False),
+        "user_is_banned": data.get("user_is_banned", False),
+        "user_is_moderator": data.get("user_is_moderator", False),
+    }
+    logger.debug(f"Formatted subreddit: {formatted['display_name']}")
+    return formatted
+
+# Format message data for output
+def format_message(message: Dict[str, Any]) -> Dict[str, Any]:
+    """Format a Reddit message for consistent output."""
+    data = message.get("data", {})
+    formatted = {
+        "id": data.get("id", ""),
+        "fullname": data.get("name", ""),
+        "author": data.get("author", ""),
+        "subject": data.get("subject", ""),
+        "body": data.get("body", ""),
+        "created": datetime.fromtimestamp(data.get("created_utc", 0)).isoformat(),
+        "was_comment": data.get("was_comment", False),
+        "dest": data.get("dest", ""),
+        "new": data.get("new", False),
+    }
+    logger.debug(f"Formatted message: {formatted['subject']}")
+    return formatted
+
+# Format notification data for output
+def format_notification(notification: Dict[str, Any]) -> Dict[str, Any]:
+    """Format a Reddit notification for consistent output."""
+    data = notification.get("data", {})
+    formatted = {
+        "id": data.get("id", ""),
+        "fullname": data.get("name", ""),
+        "type": data.get("type", ""),
+        "created": datetime.fromtimestamp(data.get("created_utc", 0)).isoformat(),
+        "context": data.get("context", ""),
+        "subject": data.get("subject", ""),
+        "body": data.get("body", ""),
+        "link_title": data.get("link_title", ""),
+        "subreddit": data.get("subreddit", ""),
+        "was_comment": data.get("was_comment", False),
+    }
+    logger.debug(f"Formatted notification with ID: {formatted['id']}")
     return formatted
 
 # Register tools
@@ -1003,6 +1141,671 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[types.TextCont
                 type="text",
                 text=json.dumps(stats, indent=2)
             )]
+            
+        # ================== NEW TOOLS ==================
+        # Subreddit Info tools
+        elif name == "get_subreddit_info":
+            subreddit = arguments.get("subreddit")
+            
+            if not subreddit:
+                logger.warning(f"TOOL-{tool_id}: Get subreddit info failed - missing subreddit name")
+                return [types.TextContent(
+                    type="text",
+                    text="Error: Subreddit name is required."
+                )]
+            
+            logger.info(f"TOOL-{tool_id}: Getting info for r/{subreddit}")
+            
+            data = await fetch_reddit_data(f"/r/{subreddit}/about")
+            
+            if not data.get("data"):
+                logger.warning(f"TOOL-{tool_id}: Subreddit not found: r/{subreddit}")
+                return [types.TextContent(
+                    type="text",
+                    text=f"Error: Couldn't find subreddit r/{subreddit}."
+                )]
+            
+            subreddit_info = format_subreddit(data)
+            
+            logger.info(f"TOOL-{tool_id}: Successfully retrieved info for r/{subreddit}")
+            
+            return [types.TextContent(
+                type="text",
+                text=json.dumps(subreddit_info, indent=2)
+            )]
+        
+        elif name == "get_trending_subreddits":
+            logger.info(f"TOOL-{tool_id}: Getting trending subreddits")
+            
+            data = await fetch_reddit_data("/trending_subreddits")
+            
+            if not data.get("subreddit_names"):
+                logger.warning(f"TOOL-{tool_id}: No trending subreddits found")
+                return [types.TextContent(
+                    type="text",
+                    text="Error: Couldn't retrieve trending subreddits."
+                )]
+            
+            trending = {
+                "trending_subreddits": data.get("subreddit_names", []),
+                "trending_timestamp": data.get("comment", "")
+            }
+            
+            logger.info(f"TOOL-{tool_id}: Successfully retrieved {len(trending['trending_subreddits'])} trending subreddits")
+            
+            return [types.TextContent(
+                type="text",
+                text=json.dumps(trending, indent=2)
+            )]
+        
+        elif name == "get_subreddit_moderators":
+            subreddit = arguments.get("subreddit")
+            
+            if not subreddit:
+                logger.warning(f"TOOL-{tool_id}: Get moderators failed - missing subreddit name")
+                return [types.TextContent(
+                    type="text",
+                    text="Error: Subreddit name is required."
+                )]
+            
+            logger.info(f"TOOL-{tool_id}: Getting moderators for r/{subreddit}")
+            
+            data = await fetch_reddit_data(f"/r/{subreddit}/about/moderators")
+            
+            if not data.get("data") or not data["data"].get("children"):
+                logger.warning(f"TOOL-{tool_id}: No moderators found for r/{subreddit}")
+                return [types.TextContent(
+                    type="text",
+                    text=f"Error: Couldn't retrieve moderators for r/{subreddit}."
+                )]
+            
+            moderators = []
+            for mod in data["data"]["children"]:
+                moderators.append({
+                    "name": mod.get("name", ""),
+                    "author_flair_text": mod.get("author_flair_text", ""),
+                    "mod_permissions": mod.get("mod_permissions", []),
+                    "date": datetime.fromtimestamp(mod.get("date", 0)).isoformat() if mod.get("date") else None
+                })
+            
+            result = {
+                "subreddit": f"r/{subreddit}",
+                "moderators": moderators
+            }
+            
+            logger.info(f"TOOL-{tool_id}: Successfully retrieved {len(moderators)} moderators for r/{subreddit}")
+            
+            return [types.TextContent(
+                type="text",
+                text=json.dumps(result, indent=2)
+            )]
+        
+        # Content Management tools
+        elif name == "save_content":
+            # Requires authentication
+            thing_id = arguments.get("thing_id")
+            
+            if not thing_id:
+                logger.warning(f"TOOL-{tool_id}: Save content failed - missing thing_id")
+                return [types.TextContent(
+                    type="text",
+                    text="Error: thing_id is required."
+                )]
+            
+            logger.info(f"TOOL-{tool_id}: Saving content with ID {thing_id}")
+            
+            data = {
+                "id": thing_id
+            }
+            
+            response = await fetch_reddit_data(
+                "/api/save",
+                authenticated=True,
+                method="POST",
+                data=data
+            )
+            
+            logger.info(f"TOOL-{tool_id}: Successfully saved content with ID {thing_id}")
+            
+            return [types.TextContent(
+                type="text",
+                text=json.dumps({
+                    "status": "success",
+                    "message": f"Content with ID {thing_id} has been saved."
+                }, indent=2)
+            )]
+        
+        elif name == "unsave_content":
+            # Requires authentication
+            thing_id = arguments.get("thing_id")
+            
+            if not thing_id:
+                logger.warning(f"TOOL-{tool_id}: Unsave content failed - missing thing_id")
+                return [types.TextContent(
+                    type="text",
+                    text="Error: thing_id is required."
+                )]
+            
+            logger.info(f"TOOL-{tool_id}: Unsaving content with ID {thing_id}")
+            
+            data = {
+                "id": thing_id
+            }
+            
+            response = await fetch_reddit_data(
+                "/api/unsave",
+                authenticated=True,
+                method="POST",
+                data=data
+            )
+            
+            logger.info(f"TOOL-{tool_id}: Successfully unsaved content with ID {thing_id}")
+            
+            return [types.TextContent(
+                type="text",
+                text=json.dumps({
+                    "status": "success",
+                    "message": f"Content with ID {thing_id} has been unsaved."
+                }, indent=2)
+            )]
+        
+        elif name == "get_saved_content":
+            # Requires authentication
+            limit = min(int(arguments.get("limit", 25)), 100)
+            
+            logger.info(f"TOOL-{tool_id}: Getting saved content, limit: {limit}")
+            
+            data = await fetch_reddit_data(
+                f"/user/{REDDIT_USERNAME}/saved",
+                params={"limit": str(limit)},
+                authenticated=True
+            )
+            
+            if not data.get("data") or not data["data"].get("children"):
+                logger.warning(f"TOOL-{tool_id}: No saved content found")
+                return [types.TextContent(
+                    type="text",
+                    text="No saved content found."
+                )]
+            
+            saved_items = []
+            for item in data["data"]["children"]:
+                kind = item.get("kind", "")
+                if kind == "t3":  # Post
+                    saved_items.append(format_post(item))
+                elif kind == "t1":  # Comment
+                    saved_items.append(format_comment(item))
+            
+            result = {
+                "count": len(saved_items),
+                "items": saved_items
+            }
+            
+            logger.info(f"TOOL-{tool_id}: Successfully retrieved {len(saved_items)} saved items")
+            
+            return [types.TextContent(
+                type="text",
+                text=json.dumps(result, indent=2)
+            )]
+        
+        elif name == "edit_content":
+            # Requires authentication
+            thing_id = arguments.get("thing_id")
+            text = arguments.get("text")
+            
+            if not thing_id or not text:
+                logger.warning(f"TOOL-{tool_id}: Edit content failed - missing thing_id or text")
+                return [types.TextContent(
+                    type="text",
+                    text="Error: Both thing_id and text are required for editing."
+                )]
+            
+            logger.info(f"TOOL-{tool_id}: Editing content with ID {thing_id}")
+            
+            data = {
+                "thing_id": thing_id,
+                "text": text
+            }
+            
+            response = await fetch_reddit_data(
+                "/api/editusertext",
+                authenticated=True,
+                method="POST",
+                data=data
+            )
+            
+            if response.get("json") and response["json"].get("errors") and len(response["json"]["errors"]) > 0:
+                error_msgs = response["json"]["errors"]
+                logger.error(f"TOOL-{tool_id}: Content editing error: {error_msgs}")
+                return [types.TextContent(
+                    type="text",
+                    text=f"Error editing content: {error_msgs}"
+                )]
+            
+            logger.info(f"TOOL-{tool_id}: Successfully edited content with ID {thing_id}")
+            
+            return [types.TextContent(
+                type="text",
+                text=json.dumps({
+                    "status": "success",
+                    "message": f"Content with ID {thing_id} has been edited."
+                }, indent=2)
+            )]
+        
+        elif name == "delete_content":
+            # Requires authentication
+            thing_id = arguments.get("thing_id")
+            
+            if not thing_id:
+                logger.warning(f"TOOL-{tool_id}: Delete content failed - missing thing_id")
+                return [types.TextContent(
+                    type="text",
+                    text="Error: thing_id is required."
+                )]
+            
+            logger.info(f"TOOL-{tool_id}: Deleting content with ID {thing_id}")
+            
+            data = {
+                "id": thing_id
+            }
+            
+            response = await fetch_reddit_data(
+                "/api/del",
+                authenticated=True,
+                method="POST",
+                data=data
+            )
+            
+            logger.info(f"TOOL-{tool_id}: Successfully deleted content with ID {thing_id}")
+            
+            return [types.TextContent(
+                type="text",
+                text=json.dumps({
+                    "status": "success",
+                    "message": f"Content with ID {thing_id} has been deleted."
+                }, indent=2)
+            )]
+        
+        # Subreddit subscription management
+        elif name == "subscribe_to_subreddit":
+            # Requires authentication
+            subreddit = arguments.get("subreddit")
+            
+            if not subreddit:
+                logger.warning(f"TOOL-{tool_id}: Subscribe failed - missing subreddit")
+                return [types.TextContent(
+                    type="text",
+                    text="Error: Subreddit name is required."
+                )]
+            
+            logger.info(f"TOOL-{tool_id}: Subscribing to r/{subreddit}")
+            
+            # First, get the subreddit ID
+            subreddit_data = await fetch_reddit_data(f"/r/{subreddit}/about")
+            
+            if not subreddit_data.get("data") or not subreddit_data["data"].get("name"):
+                logger.warning(f"TOOL-{tool_id}: Subreddit not found: r/{subreddit}")
+                return [types.TextContent(
+                    type="text",
+                    text=f"Error: Couldn't find subreddit r/{subreddit}."
+                )]
+            
+            subreddit_fullname = subreddit_data["data"]["name"]
+            
+            # Now subscribe
+            data = {
+                "action": "sub",
+                "sr": subreddit_fullname
+            }
+            
+            response = await fetch_reddit_data(
+                "/api/subscribe",
+                authenticated=True,
+                method="POST",
+                data=data
+            )
+            
+            logger.info(f"TOOL-{tool_id}: Successfully subscribed to r/{subreddit}")
+            
+            return [types.TextContent(
+                type="text",
+                text=json.dumps({
+                    "status": "success",
+                    "message": f"Successfully subscribed to r/{subreddit}"
+                }, indent=2)
+            )]
+        
+        elif name == "unsubscribe_from_subreddit":
+            # Requires authentication
+            subreddit = arguments.get("subreddit")
+            
+            if not subreddit:
+                logger.warning(f"TOOL-{tool_id}: Unsubscribe failed - missing subreddit")
+                return [types.TextContent(
+                    type="text",
+                    text="Error: Subreddit name is required."
+                )]
+            
+            logger.info(f"TOOL-{tool_id}: Unsubscribing from r/{subreddit}")
+            
+            # First, get the subreddit ID
+            subreddit_data = await fetch_reddit_data(f"/r/{subreddit}/about")
+            
+            if not subreddit_data.get("data") or not subreddit_data["data"].get("name"):
+                logger.warning(f"TOOL-{tool_id}: Subreddit not found: r/{subreddit}")
+                return [types.TextContent(
+                    type="text",
+                    text=f"Error: Couldn't find subreddit r/{subreddit}."
+                )]
+            
+            subreddit_fullname = subreddit_data["data"]["name"]
+            
+            # Now unsubscribe
+            data = {
+                "action": "unsub",
+                "sr": subreddit_fullname
+            }
+            
+            response = await fetch_reddit_data(
+                "/api/subscribe",
+                authenticated=True,
+                method="POST",
+                data=data
+            )
+            
+            logger.info(f"TOOL-{tool_id}: Successfully unsubscribed from r/{subreddit}")
+            
+            return [types.TextContent(
+                type="text",
+                text=json.dumps({
+                    "status": "success",
+                    "message": f"Successfully unsubscribed from r/{subreddit}"
+                }, indent=2)
+            )]
+        
+        elif name == "get_subscribed_subreddits":
+            # Requires authentication
+            limit = min(int(arguments.get("limit", 100)), 100)
+            
+            logger.info(f"TOOL-{tool_id}: Getting subscribed subreddits, limit: {limit}")
+            
+            data = await fetch_reddit_data(
+                "/subreddits/mine/subscriber",
+                params={"limit": str(limit)},
+                authenticated=True
+            )
+            
+            if not data.get("data") or not data["data"].get("children"):
+                logger.warning(f"TOOL-{tool_id}: No subscribed subreddits found")
+                return [types.TextContent(
+                    type="text",
+                    text="No subscribed subreddits found."
+                )]
+            
+            subreddits = [format_subreddit(subreddit) for subreddit in data["data"]["children"]]
+            
+            result = {
+                "count": len(subreddits),
+                "subreddits": subreddits
+            }
+            
+            logger.info(f"TOOL-{tool_id}: Successfully retrieved {len(subreddits)} subscribed subreddits")
+            
+            return [types.TextContent(
+                type="text",
+                text=json.dumps(result, indent=2)
+            )]
+        
+        # User profile management
+        elif name == "get_user_trophies":
+            username = arguments.get("username")
+            
+            if not username:
+                logger.warning(f"TOOL-{tool_id}: Get trophies failed - missing username")
+                return [types.TextContent(
+                    type="text",
+                    text="Error: Username is required."
+                )]
+            
+            logger.info(f"TOOL-{tool_id}: Getting trophies for u/{username}")
+            
+            data = await fetch_reddit_data(f"/user/{username}/trophies")
+            
+            if not data.get("data") or not data["data"].get("trophies"):
+                logger.warning(f"TOOL-{tool_id}: No trophies found for u/{username}")
+                return [types.TextContent(
+                    type="text",
+                    text=f"No trophies found for u/{username}."
+                )]
+            
+            trophies = []
+            for trophy in data["data"]["trophies"]:
+                if trophy.get("data"):
+                    trophy_data = trophy["data"]
+                    trophies.append({
+                        "name": trophy_data.get("name", ""),
+                        "description": trophy_data.get("description", ""),
+                        "award_id": trophy_data.get("award_id", ""),
+                        "granted_at": datetime.fromtimestamp(trophy_data.get("granted_at", 0)).isoformat() if trophy_data.get("granted_at") else None
+                    })
+            
+            result = {
+                "username": username,
+                "trophy_count": len(trophies),
+                "trophies": trophies
+            }
+            
+            logger.info(f"TOOL-{tool_id}: Successfully retrieved {len(trophies)} trophies for u/{username}")
+            
+            return [types.TextContent(
+                type="text",
+                text=json.dumps(result, indent=2)
+            )]
+        
+        elif name == "edit_user_profile":
+            # Requires authentication
+            about = arguments.get("about", "")
+            display_name = arguments.get("display_name", "")
+            
+            if not about and not display_name:
+                logger.warning(f"TOOL-{tool_id}: Edit profile failed - no data provided")
+                return [types.TextContent(
+                    type="text",
+                    text="Error: At least one field (about or display_name) is required."
+                )]
+            
+            logger.info(f"TOOL-{tool_id}: Editing user profile")
+            
+            data = {}
+            if about:
+                data["about"] = about
+            if display_name:
+                data["display_name"] = display_name
+            
+            response = await fetch_reddit_data(
+                "/api/v1/me/prefs",
+                authenticated=True,
+                method="PATCH",
+                data=data
+            )
+            
+            logger.info(f"TOOL-{tool_id}: Successfully edited user profile")
+            
+            return [types.TextContent(
+                type="text",
+                text=json.dumps({
+                    "status": "success",
+                    "message": "User profile has been updated."
+                }, indent=2)
+            )]
+        
+        # Messages and notifications
+        elif name == "get_notifications":
+            # Requires authentication
+            filter_type = arguments.get("filter", "all")
+            limit = min(int(arguments.get("limit", 25)), 100)
+            
+            endpoint = "/message/inbox"
+            if filter_type == "unread":
+                endpoint = "/message/unread"
+            elif filter_type == "messages":
+                endpoint = "/message/messages"
+            elif filter_type == "comments":
+                endpoint = "/message/comments"
+            elif filter_type == "posts":
+                endpoint = "/message/selfreply"
+            elif filter_type == "mentions":
+                endpoint = "/message/mentions"
+            
+            logger.info(f"TOOL-{tool_id}: Getting notifications with filter '{filter_type}', limit: {limit}")
+            
+            data = await fetch_reddit_data(
+                endpoint,
+                params={"limit": str(limit)},
+                authenticated=True
+            )
+            
+            if not data.get("data") or not data["data"].get("children"):
+                logger.warning(f"TOOL-{tool_id}: No notifications found with filter '{filter_type}'")
+                return [types.TextContent(
+                    type="text",
+                    text=f"No notifications found with filter '{filter_type}'."
+                )]
+            
+            notifications = []
+            for notification in data["data"]["children"]:
+                if notification.get("data"):
+                    notifications.append(format_notification(notification))
+            
+            result = {
+                "filter": filter_type,
+                "count": len(notifications),
+                "notifications": notifications
+            }
+            
+            logger.info(f"TOOL-{tool_id}: Successfully retrieved {len(notifications)} notifications")
+            
+            return [types.TextContent(
+                type="text",
+                text=json.dumps(result, indent=2)
+            )]
+        
+        elif name == "mark_notifications_read":
+            # Requires authentication
+            thing_ids = arguments.get("thing_ids", [])
+            
+            if not thing_ids or not isinstance(thing_ids, list) or len(thing_ids) == 0:
+                logger.warning(f"TOOL-{tool_id}: Mark read failed - no thing_ids provided")
+                return [types.TextContent(
+                    type="text",
+                    text="Error: At least one thing_id is required."
+                )]
+            
+            logger.info(f"TOOL-{tool_id}: Marking {len(thing_ids)} notifications as read")
+            
+            data = {
+                "id": ",".join(thing_ids)
+            }
+            
+            response = await fetch_reddit_data(
+                "/api/read_message",
+                authenticated=True,
+                method="POST",
+                data=data
+            )
+            
+            logger.info(f"TOOL-{tool_id}: Successfully marked {len(thing_ids)} notifications as read")
+            
+            return [types.TextContent(
+                type="text",
+                text=json.dumps({
+                    "status": "success",
+                    "message": f"Marked {len(thing_ids)} notifications as read."
+                }, indent=2)
+            )]
+        
+        elif name == "send_private_message":
+            # Requires authentication
+            to = arguments.get("to")
+            subject = arguments.get("subject")
+            text = arguments.get("text")
+            
+            if not to or not subject or not text:
+                logger.warning(f"TOOL-{tool_id}: Send message failed - missing required fields")
+                return [types.TextContent(
+                    type="text",
+                    text="Error: 'to', 'subject', and 'text' are all required fields."
+                )]
+            
+            logger.info(f"TOOL-{tool_id}: Sending message to u/{to}")
+            
+            data = {
+                "to": to,
+                "subject": subject,
+                "text": text
+            }
+            
+            response = await fetch_reddit_data(
+                "/api/compose",
+                authenticated=True,
+                method="POST",
+                data=data
+            )
+            
+            if response.get("json") and response["json"].get("errors") and len(response["json"]["errors"]) > 0:
+                error_msgs = response["json"]["errors"]
+                logger.error(f"TOOL-{tool_id}: Message sending error: {error_msgs}")
+                return [types.TextContent(
+                    type="text",
+                    text=f"Error sending message: {error_msgs}"
+                )]
+            
+            logger.info(f"TOOL-{tool_id}: Successfully sent message to u/{to}")
+            
+            return [types.TextContent(
+                type="text",
+                text=json.dumps({
+                    "status": "success",
+                    "message": f"Message sent to u/{to}"
+                }, indent=2)
+            )]
+        
+        # Moderation and reporting
+        elif name == "report_content":
+            # Requires authentication
+            thing_id = arguments.get("thing_id")
+            reason = arguments.get("reason")
+            
+            if not thing_id or not reason:
+                logger.warning(f"TOOL-{tool_id}: Report content failed - missing thing_id or reason")
+                return [types.TextContent(
+                    type="text",
+                    text="Error: Both thing_id and reason are required for reporting."
+                )]
+            
+            logger.info(f"TOOL-{tool_id}: Reporting content with ID {thing_id}")
+            
+            data = {
+                "thing_id": thing_id,
+                "reason": reason
+            }
+            
+            response = await fetch_reddit_data(
+                "/api/report",
+                authenticated=True,
+                method="POST",
+                data=data
+            )
+            
+            logger.info(f"TOOL-{tool_id}: Successfully reported content with ID {thing_id}")
+            
+            return [types.TextContent(
+                type="text",
+                text=json.dumps({
+                    "status": "success",
+                    "message": f"Content with ID {thing_id} has been reported."
+                }, indent=2)
+            )]
         
         # If we reach here, the tool wasn't recognized
         logger.error(f"TOOL-{tool_id}: Unknown tool '{name}'")
@@ -1020,7 +1823,7 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[types.TextCont
 
 async def main():
     """Run the MCP server."""
-    logger.info("Starting Reddit MCP Server")
+    logger.info("Starting Enhanced Reddit MCP Server")
     
     # Log environment setup
     env_vars = {
