@@ -572,7 +572,7 @@ async def list_tools() -> List[types.Tool]:
         ),
         types.Tool(
             name="submit_post",
-            description="Submit a new post to a subreddit",
+            description="Submit/Create a new post to a subreddit",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -606,7 +606,7 @@ async def list_tools() -> List[types.Tool]:
         ),
         types.Tool(
             name="submit_comment",
-            description="Submit a comment on a post or another comment",
+            description="Submit/Create a comment on a post or another comment",
             inputSchema={
                 "type": "object",
                 "properties": {
