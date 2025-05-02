@@ -2,7 +2,7 @@ name: Reddit MCP Bot
 
 on:
   schedule:
-    - cron: "0 3,11,19 * * *"  # runs at 3AM, 11AM, and 7PM UTC every day
+    - cron: "0 3,16,21 * * *"  # runs at 3AM, 11AM, and 7PM UTC every day
   workflow_dispatch:  # keep this so you can still trigger it manually
 
 jobs:
