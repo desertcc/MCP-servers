@@ -127,28 +127,48 @@ class GroqWrapper:
             logger.error(f"Failed to import or initialize Groq: {e}")
             logger.error(traceback.format_exc())
     
-    def generate_completion(self, prompt, model="llama3-8b-8192", max_tokens=300, temperature=0.7):
-        """Generate a completion using the Groq API"""
+    def generate_completion(self, prompt_or_messages, model="llama3-8b-8192", max_tokens=300, temperature=0.7):
+        """Generate a completion using the Groq API
+        
+        Args:
+            prompt_or_messages: Either a string prompt or a list of message dictionaries
+            model: The Groq model to use
+            max_tokens: Maximum number of tokens to generate
+            temperature: Temperature for generation (higher = more creative)
+        """
         if not self.client:
             logger.warning("Groq client is not available, using fallback response")
             return "This looks great! Thanks for sharing your work!"
         
         try:
-            completion = self.client.chat.completions.create(
-                model=model,
-                messages=[
+            # Determine if prompt_or_messages is a string prompt or a messages array
+            if isinstance(prompt_or_messages, str):
+                # If it's a string, use the default message structure
+                messages = [
                     {
                         "role": "system",
                         "content": (
-                            "You are a friendly, supportive Reddit user who loves giving positive advice "
-                            "on slime, crafts, kids, parenting, home, and toys. Never be sarcastic or negative."
+                            "You are a POSITIVE and SUPPORTIVE Reddit commenter. Keep replies super brief (1-2 sentences, max 25 words). "
+                            "Your replies MUST be warm, encouraging, and helpful - never confused, dismissive, or negative. "
+                            "Sound casual and warm like a fellow Redditor - not formal. Use conversational tone. "
+                            "No quotes, no greetings, no summarizing. If unsure, be generally positive about creativity or sharing."
                         )
                     },
                     {
                         "role": "user",
-                        "content": prompt
+                        "content": prompt_or_messages
                     }
-                ],
+                ]
+            else:
+                # If it's already a messages array, use it directly
+                messages = prompt_or_messages
+            
+            # Log what we're sending to Groq
+            logger.info(f"Sending request to Groq model: {model}")
+            
+            completion = self.client.chat.completions.create(
+                model=model,
+                messages=messages,
                 temperature=temperature,
                 max_tokens=max_tokens
             )

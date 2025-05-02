@@ -248,15 +248,86 @@ class RedditBot:
         
         return list(discovered_subreddits)
     
+    def check_reply_sentiment(self, reply: str) -> bool:
+        """Check if a reply has appropriate sentiment and content.
+        
+        Returns:
+            bool: True if the reply is positive and appropriate, False otherwise
+        """
+        # List of negative phrases or patterns that indicate an inappropriate response
+        negative_patterns = [
+            "no idea", "don't know", "not sure", "can't help", "sorry", 
+            "don't understand", "what are you talking about", "confused",
+            "negative", "bad", "terrible", "awful", "hate", "dislike",
+            "stupid", "dumb", "idiot", "fool", "wrong", "incorrect",
+            "waste", "boring", "lame", "weird", "strange", "odd",
+            "not good", "not great", "not worth", "wouldn't", "shouldn't",
+            "can't stand", "annoying", "irritating", "frustrating",
+            "wtf", "what the", "huh?", "eh?", "um", "uh"
+        ]
+        
+        # Check for negative patterns
+        reply_lower = reply.lower()
+        for pattern in negative_patterns:
+            if pattern in reply_lower:
+                logger.warning(f"Rejected reply due to negative pattern '{pattern}': {reply}")
+                return False
+        
+        # Check for minimum length (too short might be dismissive)
+        if len(reply.split()) < 3:
+            logger.warning(f"Rejected reply due to being too short: {reply}")
+            return False
+        
+        # Check for question marks (we want statements, not questions)
+        if reply.count('?') > 0 and not any(positive in reply_lower for positive in ["cool", "awesome", "nice", "love", "great"]):
+            logger.warning(f"Rejected reply because it's a question without positive sentiment: {reply}")
+            return False
+            
+        return True
+    
     def generate_reply(self, post_title: str, post_content: str) -> str:
         """Generate a friendly reply using our GroqWrapper."""
-        prompt = (
-            f"Reply to this Reddit post like you're talking to a friend. Keep it short (2-4 sentences), "
-            f"warm, supportive, and offer helpful advice if appropriate.\n\n"
-            f"Title: {post_title}\nContent: {post_content}\n\nReply:"
-        )
+        messages = [
+            {
+                "role": "system",
+                "content": (
+                    "You are a POSITIVE and SUPPORTIVE Reddit commenter responding to posts about slime, crafts, parenting, and toys. "
+                    "Your replies MUST be warm, encouraging, and helpful - never confused, dismissive, or negative. "
+                    "Limit replies to 1-2 concise, supportive sentences. Maximum 25 words total. "
+                    "Sound casual and warm like a fellow parent or crafter - not overly formal. "
+                    "Use a conversational tone. No quotes, no greetings, no summarizing. "
+                    "If you're unsure what the post is about, respond with something generally positive about creativity or sharing."
+                )
+            },
+            {
+                "role": "user",
+                "content": (
+                    f"Write a super brief, casual, POSITIVE Reddit reply. Be supportive and encouraging.\n\n"
+                    f"Title: {post_title}\nContent: {post_content}\n\nReply:"
+                )
+            }
+        ]
         
-        return self.groq_wrapper.generate_completion(prompt)
+        # Try up to 3 times to get a good reply
+        for attempt in range(3):
+            reply = self.groq_wrapper.generate_completion(messages)
+            
+            if self.check_reply_sentiment(reply):
+                return reply
+            
+            logger.info(f"Attempt {attempt+1} produced inappropriate reply, trying again...")
+        
+        # If all attempts failed, use a safe fallback response
+        fallback_responses = [
+            "Love this idea! Thanks for sharing your creativity.",
+            "This is so cool! Really appreciate you sharing.",
+            "Awesome work! This community always has the best ideas.",
+            "So creative! Can't wait to see what you make next.",
+            "This is fantastic! Thanks for the inspiration."
+        ]
+        
+        logger.warning("Using fallback response after multiple failed attempts")
+        return random.choice(fallback_responses)
     
     def reply_to_posts(self, subreddit_name: str):
         """Get recent posts from a subreddit and reply to them."""
