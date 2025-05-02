@@ -14,6 +14,13 @@ jobs:
       REDDIT_REFRESH_TOKEN: ${{ secrets.REDDIT_REFRESH_TOKEN }}
       REDDIT_USER_AGENT: ${{ secrets.REDDIT_USER_AGENT }}
       GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+      # Explicitly unset proxy variables
+      HTTP_PROXY: ''
+      HTTPS_PROXY: ''
+      http_proxy: ''
+      https_proxy: ''
+      no_proxy: ''
+      NO_PROXY: ''
 
     steps:
       - name: Checkout code
@@ -30,7 +37,25 @@ jobs:
 
       - name: Install dependencies
         run: pip install -r servers/reddit_server/requirements.txt
+        
+      - name: Install specific Groq version
+        run: |
+          pip uninstall -y groq
+          pip install groq==0.4.1
+          
+      - name: Print debug information
+        run: |
+          echo "Installed packages:"
+          pip list
+          echo "\nGroq version:"
+          python -c "import groq; print(groq.__version__)"
+          echo "\nEnvironment variables:"
+          env | grep -i proxy || echo "No proxy variables found"
 
+      - name: Run Groq test script
+        run: |
+          python servers/reddit_server/github_actions_test.py
+          
       - name: Run bot
         run: |
           python servers/reddit_server/bot_runner.py --max-subreddits 10 --max-replies 1 --max-upvotes 1

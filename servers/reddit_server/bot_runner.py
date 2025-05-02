@@ -136,21 +136,40 @@ class RedditBot:
             logger.error(f"Failed to initialize Reddit client: {e}")
             sys.exit(1)
         
-        # Initialize Groq API client
+        # Initialize Groq client for generating replies
         try:
+            # Check if GROQ_API_KEY is set
+            api_key = os.environ.get("GROQ_API_KEY")
+            if not api_key:
+                logger.error("GROQ_API_KEY environment variable is not set")
+                self.groq_client = None
+                return
+                
+            logger.info(f"Groq version: {groq.__version__}")
+            
+            # Log all environment variables related to proxies
+            proxy_vars = ['HTTP_PROXY', 'HTTPS_PROXY', 'http_proxy', 'https_proxy', 'no_proxy', 'NO_PROXY']
+            for var in proxy_vars:
+                if var in os.environ:
+                    logger.info(f"Found proxy environment variable: {var}")
+                    
             # Updated initialization based on latest Groq documentation
-            self.groq_client = groq.Groq(
-                api_key=os.environ.get("GROQ_API_KEY")
-            )
+            logger.info("Initializing Groq client...")
+            self.groq_client = groq.Groq(api_key=api_key)
+            logger.info("Groq client initialized, testing with a simple completion...")
+            
             # Test the client with a simple completion to verify it works
             test_completion = self.groq_client.chat.completions.create(
                 model="llama3-8b-8192",
                 messages=[{"role": "user", "content": "Hello"}],
                 max_tokens=5
             )
-            logger.info(f"Groq client initialized and tested successfully: {test_completion.choices[0].message.content}")
+            logger.info(f"Groq client tested successfully: {test_completion.choices[0].message.content}")
         except Exception as e:
             logger.error(f"Failed to initialize Groq client: {e}")
+            # Print the full exception traceback for debugging
+            import traceback
+            logger.error(f"Traceback: {traceback.format_exc()}")
             self.groq_client = None
         
         # Initialize log storage
