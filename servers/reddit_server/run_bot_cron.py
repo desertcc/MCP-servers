@@ -5,7 +5,7 @@ import subprocess
 def run_bot():
     print("Running bot script...")
     subprocess.run([
-        "python", "servers/reddit_server/bot_runner.py",
+        "python", "bot_runner.py",
         "--max-subreddits", "10",
         "--max-replies", "5",
         "--max-upvotes", "10"
