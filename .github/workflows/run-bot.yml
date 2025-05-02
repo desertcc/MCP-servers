@@ -14,13 +14,6 @@ jobs:
       REDDIT_REFRESH_TOKEN: ${{ secrets.REDDIT_REFRESH_TOKEN }}
       REDDIT_USER_AGENT: ${{ secrets.REDDIT_USER_AGENT }}
       GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
-      # Explicitly unset proxy variables
-      HTTP_PROXY: ''
-      HTTPS_PROXY: ''
-      http_proxy: ''
-      https_proxy: ''
-      no_proxy: ''
-      NO_PROXY: ''
 
     steps:
       - name: Checkout code
@@ -33,6 +26,14 @@ jobs:
 
       - name: Print Python version
         run: python --version
+        
+      - name: Unset proxy environment variables
+        run: |
+          # Unset proxy variables that might interfere with Groq
+          unset HTTP_PROXY HTTPS_PROXY http_proxy https_proxy no_proxy NO_PROXY || true
+          # Verify they're unset
+          echo "Checking for proxy variables:"
+          env | grep -i proxy || echo "No proxy variables found"
 
 
       - name: Install dependencies
