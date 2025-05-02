@@ -393,6 +393,18 @@ class RedditBot:
                     logger.info(f"Skipping post with no content: {post.id}")
                     continue
                 
+                # Skip posts related to images or photos
+                image_keywords = ["image", "photo", "picture", "pic", "look at", "see this", "check out this image", 
+                                 "look at this photo", "look at this pic", "what do you see", "what do you think of this image",
+                                 "what do you think of this photo", "what do you think of this picture", "what do you think of this pic",
+                                 "what's in this image", "what's in this photo", "what's in this picture", "what's in this pic"]
+                
+                post_text = (post.title + " " + post.selftext).lower()
+                if any(keyword.lower() in post_text for keyword in image_keywords):
+                    logger.info(f"Skipping image-related post: {post.id}")
+                    self._log_interaction("skip", subreddit_name, post_id=post.id, content="Skipped image-related post")
+                    continue
+                
                 # Check if we've hit our reply limit
                 if self.replies_made >= self.max_replies:
                     logger.info(f"Reached maximum replies limit ({self.max_replies}). Skipping remaining posts.")
