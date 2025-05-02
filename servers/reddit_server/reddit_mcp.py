@@ -10,7 +10,9 @@ import urllib.parse
 import uuid
 
 import aiohttp
+import groq
 from mcp.server import Server
+from reddit_bot_mcp import register_bot_tools
 from mcp.server.stdio import stdio_server
 import mcp.types as types
 import platform
@@ -36,13 +38,14 @@ logger = logging.getLogger("reddit_mcp")
 # Constants for Reddit API
 REDDIT_API_BASE = "https://www.reddit.com"
 REDDIT_OAUTH_API_BASE = "https://oauth.reddit.com"
-USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+USER_AGENT = os.environ.get("REDDIT_USER_AGENT", "slime_bot/1.0")
 
 # These should be set as environment variables or as a config
 REDDIT_CLIENT_ID = os.environ.get("REDDIT_CLIENT_ID", "")
 REDDIT_CLIENT_SECRET = os.environ.get("REDDIT_CLIENT_SECRET",)
 REDDIT_USERNAME = os.environ.get("REDDIT_USERNAME", "")
 REDDIT_PASSWORD = os.environ.get("REDDIT_PASSWORD", "")
+GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
 
 # Global auth token storage
 auth_token = {
@@ -57,6 +60,9 @@ request_cache = {}  # Simple cache to avoid duplicate requests
 
 # Initialize MCP server
 app = Server("reddit-browser")
+
+# Register bot tools with the MCP server
+register_bot_tools(app)
 
 # Helper function to get or refresh auth token
 async def get_auth_token() -> str:
@@ -460,6 +466,63 @@ async def list_tools() -> List[types.Tool]:
     """List available tools for the Reddit MCP server."""
     logger.info("MCP: list_tools called")
     tool_list = [
+        types.Tool(
+            name="discover_subreddits",
+            description="Discover relevant subreddits based on keywords like slime, crafts, kids, parenting, home, and toys",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "dry_run": {
+                        "type": "boolean",
+                        "description": "If true, only simulate the discovery without making actual API calls"
+                    }
+                }
+            }
+        ),
+        types.Tool(
+            name="reply_to_subreddit_posts",
+            description="Reply to posts in a specific subreddit with friendly, helpful comments",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "subreddit": {
+                        "type": "string",
+                        "description": "Name of the subreddit to process (without the 'r/' prefix)"
+                    },
+                    "dry_run": {
+                        "type": "boolean",
+                        "description": "If true, only simulate replies without posting actual comments"
+                    }
+                },
+                "required": ["subreddit"]
+            }
+        ),
+        types.Tool(
+            name="run_bot",
+            description="Run the complete bot workflow: discover subreddits, reply to posts, and upvote content",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "dry_run": {
+                        "type": "boolean",
+                        "description": "If true, simulate all actions without making actual posts or upvotes"
+                    }
+                }
+            }
+        ),
+        types.Tool(
+            name="get_interaction_log",
+            description="Retrieve the bot's interaction log",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "limit": {
+                        "type": "number",
+                        "description": "Maximum number of recent interactions to retrieve"
+                    }
+                }
+            }
+        ),
         types.Tool(
             name="browse_subreddit",
             description="Browse posts from a specific subreddit",
