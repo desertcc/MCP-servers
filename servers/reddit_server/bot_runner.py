@@ -37,11 +37,19 @@ logger = logging.getLogger("reddit_bot")
 # Load environment variables
 load_dotenv()
 
+# Unset proxy environment variables that might interfere with Groq
+proxy_vars = ['HTTP_PROXY', 'HTTPS_PROXY', 'http_proxy', 'https_proxy', 'no_proxy', 'NO_PROXY']
+for var in proxy_vars:
+    if var in os.environ:
+        logger.info(f"Unsetting proxy environment variable: {var}")
+        del os.environ[var]
+
 # Constants
 KEYWORDS = ["slime", "crafts", "kids", "parenting", "home", "toys"]
 MAX_POSTS_PER_SUBREDDIT = 5
 MAX_COMMENTS_TO_UPVOTE = 3
-SLEEP_BETWEEN_ACTIONS = 2  # seconds
+SLEEP_BETWEEN_ACTIONS = 5  # seconds - increased to avoid rate limiting
+SLEEP_BETWEEN_POSTS = 10  # seconds - longer delay between posting to avoid rate limiting
 
 # Activity limits
 MAX_SUBREDDITS_PER_RUN = 3  # Maximum number of subreddits to process in a single run
@@ -130,17 +138,19 @@ class RedditBot:
         
         # Initialize Groq API client
         try:
-            # Initialize Groq client with only the required parameters to avoid proxy issues
-            # The current version of the Groq SDK doesn't support 'proxies' parameter
+            # Updated initialization based on latest Groq documentation
             self.groq_client = groq.Groq(
-                api_key=os.environ.get("GROQ_API_KEY"),
-                # Explicitly avoid any additional parameters that might be causing issues
+                api_key=os.environ.get("GROQ_API_KEY")
             )
-            logger.info("Groq API client initialized")
+            # Test the client with a simple completion to verify it works
+            test_completion = self.groq_client.chat.completions.create(
+                model="llama3-8b-8192",
+                messages=[{"role": "user", "content": "Hello"}],
+                max_tokens=5
+            )
+            logger.info(f"Groq client initialized and tested successfully: {test_completion.choices[0].message.content}")
         except Exception as e:
             logger.error(f"Failed to initialize Groq client: {e}")
-            # Instead of exiting, provide a fallback for testing
-            logger.warning("Using mock Groq client for testing")
             self.groq_client = None
         
         # Initialize log storage
@@ -244,12 +254,11 @@ class RedditBot:
     
     def generate_reply(self, post_title: str, post_content: str) -> str:
         """Generate a friendly reply using Groq API."""
-        # If Groq client is None (initialization failed), use fallback reply
         if self.groq_client is None:
             logger.warning("Using fallback reply because Groq client is not available")
             return "This looks great! Thanks for sharing your work!"  # Fallback reply
-            
         try:
+            # Updated to match latest Groq API documentation
             completion = self.groq_client.chat.completions.create(
                 model="llama3-8b-8192",
                 messages=[
@@ -270,13 +279,12 @@ class RedditBot:
                     }
                 ],
                 temperature=0.7,
+                # Using max_tokens which is correct for the installed version
                 max_tokens=300
             )
-            
             reply = completion.choices[0].message.content.strip()
             logger.info(f"Generated reply: {reply}")
             return reply
-            
         except Exception as e:
             logger.error(f"Error generating reply with Groq: {e}")
             return "This looks great! Thanks for sharing."  # Fallback reply
@@ -359,8 +367,17 @@ class RedditBot:
                         logger.info(f"Posted reply to: {post.id}")
                         self.replied_posts.add(post.id)
                         self.replies_made += 1
+                        # Use longer sleep after posting to avoid rate limiting
+                        time.sleep(SLEEP_BETWEEN_POSTS)
                     except Exception as e:
-                        logger.error(f"Error posting reply to {post.id}: {e}")
+                        if "RATELIMIT" in str(e):
+                            logger.warning(f"Rate limited by Reddit: {e}")
+                            # If rate limited, sleep for a longer time before continuing
+                            sleep_time = 60  # 1 minute
+                            logger.info(f"Sleeping for {sleep_time} seconds due to rate limiting")
+                            time.sleep(sleep_time)
+                        else:
+                            logger.error(f"Error posting reply to {post.id}: {e}")
                 else:
                     mode = "[DRY RUN]" if self.dry_run else "[READ ONLY]"
                     logger.info(f"{mode} Would reply to post {post.id} with: {reply_text}")
