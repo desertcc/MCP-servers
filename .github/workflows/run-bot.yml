@@ -2,32 +2,32 @@ name: Reddit MCP Bot
 
 on:
   schedule:
-    - cron: "0 2,10,18 * * *"  # Runs at 2AM, 10AM, and 6PM UTC daily
-  workflow_dispatch:  # Allows manual trigger
+    - cron: "0 3,11,19 * * *"  # runs at 3AM, 11AM, and 7PM UTC every day
+  workflow_dispatch:  # keep this so you can still trigger it manually
 
 jobs:
   run-bot:
     runs-on: ubuntu-latest
+    env:
+      REDDIT_CLIENT_ID: ${{ secrets.REDDIT_CLIENT_ID }}
+      REDDIT_CLIENT_SECRET: ${{ secrets.REDDIT_CLIENT_SECRET }}
+      REDDIT_REFRESH_TOKEN: ${{ secrets.REDDIT_REFRESH_TOKEN }}
+      REDDIT_USER_AGENT: ${{ secrets.REDDIT_USER_AGENT }}
+      GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
 
     steps:
-      - name: Checkout repo
+      - name: Checkout code
         uses: actions/checkout@v3
 
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
-          python-version: '3.11'
+          python-version: 3.10
 
       - name: Install dependencies
-        run: |
-          pip install -r servers/reddit_server/requirements.txt
+        run: pip install -r servers/reddit_server/requirements.txt
 
       - name: Run bot
-        env:
-          REDDIT_CLIENT_ID: ${{ secrets.REDDIT_CLIENT_ID }}
-          REDDIT_CLIENT_SECRET: ${{ secrets.REDDIT_CLIENT_SECRET }}
-          REDDIT_REFRESH_TOKEN: ${{ secrets.REDDIT_REFRESH_TOKEN }}
-          REDDIT_USER_AGENT: ${{ secrets.REDDIT_USER_AGENT }}
-          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
         run: |
           python servers/reddit_server/bot_runner.py --max-subreddits 10 --max-replies 5 --max-upvotes 10
+
