@@ -14,10 +14,11 @@ import random
 import logging
 import argparse
 from datetime import datetime
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Set, Optional
 
 import praw
-import groq
+# Import our custom GroqWrapper instead of direct Groq import
+from groq_wrapper import GroqWrapper
 from dotenv import load_dotenv
 
 # Set up logging
@@ -136,41 +137,17 @@ class RedditBot:
             logger.error(f"Failed to initialize Reddit client: {e}")
             sys.exit(1)
         
-        # Initialize Groq client for generating replies
-        try:
-            # Check if GROQ_API_KEY is set
-            api_key = os.environ.get("GROQ_API_KEY")
-            if not api_key:
-                logger.error("GROQ_API_KEY environment variable is not set")
-                self.groq_client = None
-                return
-                
-            logger.info(f"Groq version: {groq.__version__}")
-            
-            # Log all environment variables related to proxies
-            proxy_vars = ['HTTP_PROXY', 'HTTPS_PROXY', 'http_proxy', 'https_proxy', 'no_proxy', 'NO_PROXY']
-            for var in proxy_vars:
-                if var in os.environ:
-                    logger.info(f"Found proxy environment variable: {var}")
-                    
-            # Updated initialization based on latest Groq documentation
-            logger.info("Initializing Groq client...")
-            self.groq_client = groq.Groq(api_key=api_key)
-            logger.info("Groq client initialized, testing with a simple completion...")
-            
-            # Test the client with a simple completion to verify it works
-            test_completion = self.groq_client.chat.completions.create(
-                model="llama3-8b-8192",
-                messages=[{"role": "user", "content": "Hello"}],
-                max_tokens=5
-            )
-            logger.info(f"Groq client tested successfully: {test_completion.choices[0].message.content}")
-        except Exception as e:
-            logger.error(f"Failed to initialize Groq client: {e}")
-            # Print the full exception traceback for debugging
-            import traceback
-            logger.error(f"Traceback: {traceback.format_exc()}")
-            self.groq_client = None
+        # Initialize Groq client using our custom wrapper
+        logger.info("Initializing Groq client using GroqWrapper...")
+        self.groq_wrapper = GroqWrapper()
+        
+        # Test if the wrapper was initialized successfully
+        if self.groq_wrapper.client:
+            logger.info("Groq wrapper initialized successfully")
+            test_response = self.groq_wrapper.generate_completion("Hello")
+            logger.info(f"Test response from Groq: {test_response}")
+        else:
+            logger.warning("Groq wrapper could not initialize a client, will use fallback responses")
         
         # Initialize log storage
         self.interaction_log = []
@@ -272,41 +249,14 @@ class RedditBot:
         return list(discovered_subreddits)
     
     def generate_reply(self, post_title: str, post_content: str) -> str:
-        """Generate a friendly reply using Groq API."""
-        if self.groq_client is None:
-            logger.warning("Using fallback reply because Groq client is not available")
-            return "This looks great! Thanks for sharing your work!"  # Fallback reply
-        try:
-            # Updated to match latest Groq API documentation
-            completion = self.groq_client.chat.completions.create(
-                model="llama3-8b-8192",
-                messages=[
-                    {
-                        "role": "system",
-                        "content": (
-                            "You are a friendly, supportive Reddit user who loves giving positive advice "
-                            "on slime, crafts, kids, parenting, home, and toys. Never be sarcastic or negative."
-                        )
-                    },
-                    {
-                        "role": "user",
-                        "content": (
-                            f"Reply to this Reddit post like you're talking to a friend. Keep it short (2-4 sentences), "
-                            f"warm, supportive, and offer helpful advice if appropriate.\n\n"
-                            f"Title: {post_title}\nContent: {post_content}\n\nReply:"
-                        )
-                    }
-                ],
-                temperature=0.7,
-                # Using max_tokens which is correct for the installed version
-                max_tokens=300
-            )
-            reply = completion.choices[0].message.content.strip()
-            logger.info(f"Generated reply: {reply}")
-            return reply
-        except Exception as e:
-            logger.error(f"Error generating reply with Groq: {e}")
-            return "This looks great! Thanks for sharing."  # Fallback reply
+        """Generate a friendly reply using our GroqWrapper."""
+        prompt = (
+            f"Reply to this Reddit post like you're talking to a friend. Keep it short (2-4 sentences), "
+            f"warm, supportive, and offer helpful advice if appropriate.\n\n"
+            f"Title: {post_title}\nContent: {post_content}\n\nReply:"
+        )
+        
+        return self.groq_wrapper.generate_completion(prompt)
     
     def reply_to_posts(self, subreddit_name: str):
         """Get recent posts from a subreddit and reply to them."""
