@@ -33,5 +33,5 @@ jobs:
 
       - name: Run bot
         run: |
-          python servers/reddit_server/bot_runner.py --max-subreddits 10 --max-replies 5 --max-upvotes 10
+          python servers/reddit_server/bot_runner.py --max-subreddits 10 --max-replies 1 --max-upvotes 1
 
