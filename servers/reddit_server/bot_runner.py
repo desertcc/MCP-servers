@@ -342,7 +342,7 @@ class RedditBot:
 
 Post Content: {post_content}
 
-Please write a brief, friendly, and supportive reply to this Reddit post. Keep it under 25 words."""
+Please write a brief, friendly, and supportive reply to this Reddit post. Keep it under 25 words. DO NOT use quotation marks in your response."""
             
             # Generate a reply using our Groq wrapper
             if self.custom_prompt and self.groq_wrapper.client:
@@ -350,7 +350,7 @@ Please write a brief, friendly, and supportive reply to this Reddit post. Keep i
                 messages = [
                     {
                         "role": "system",
-                        "content": self.custom_prompt
+                        "content": self.custom_prompt + " IMPORTANT: NEVER use quotation marks in your responses."
                     },
                     {
                         "role": "user",
@@ -361,6 +361,15 @@ Please write a brief, friendly, and supportive reply to this Reddit post. Keep i
             else:
                 # Otherwise use the default prompt in the groq_wrapper
                 reply = self.groq_wrapper.generate_completion(prompt)
+            
+            # Strip any quotation marks from the reply
+            reply = reply.strip()
+            reply = reply.strip('"')
+            reply = reply.strip("'")
+            
+            # Also remove any internal quotation marks
+            reply = reply.replace('"', '')
+            reply = reply.replace("'", '')
             
             # Check if the reply is appropriate
             if not self.check_reply_sentiment(reply):
