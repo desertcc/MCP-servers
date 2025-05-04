@@ -8,15 +8,29 @@ on:
     - cron: "55 21 * * *"   # 2:55 PM PST
     - cron: "18 5 * * *"    # 10:18 PM PST
   workflow_dispatch:
+    inputs:
+      bot_id:
+        description: 'Specific bot ID to run (leave empty to run all)'
+        required: false
 
 jobs:
   run-bot:
     runs-on: ubuntu-22.04  # 👈 fix: use a stable Ubuntu version
+    strategy:
+      matrix:
+        # This list can be updated as new bots are added
+        bot_id: ["slime", "truck1", "truck2"]
+        # If a specific bot_id was provided via workflow_dispatch, only run that one
+        exclude:
+          - bot_id: "slime"
+            if: "${{ github.event.inputs.bot_id != '' && github.event.inputs.bot_id != 'slime' }}"
+          - bot_id: "truck1"
+            if: "${{ github.event.inputs.bot_id != '' && github.event.inputs.bot_id != 'truck1' }}"
+          - bot_id: "truck2"
+            if: "${{ github.event.inputs.bot_id != '' && github.event.inputs.bot_id != 'truck2' }}"
     env:
-      REDDIT_CLIENT_ID: ${{ secrets.REDDIT_CLIENT_ID }}
-      REDDIT_CLIENT_SECRET: ${{ secrets.REDDIT_CLIENT_SECRET }}
-      REDDIT_REFRESH_TOKEN: ${{ secrets.REDDIT_REFRESH_TOKEN }}
-      REDDIT_USER_AGENT: ${{ secrets.REDDIT_USER_AGENT }}
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
       GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
 
     steps:
@@ -63,5 +77,5 @@ jobs:
           
       - name: Run bot
         run: |
-          python servers/reddit_server/bot_runner.py --max-subreddits 20 --max-replies 2 --max-upvotes 4
+          python servers/reddit_server/bot_runner.py --max-subreddits 20 --max-replies 2 --max-upvotes 4 --bot-id ${{ matrix.bot_id }}
 

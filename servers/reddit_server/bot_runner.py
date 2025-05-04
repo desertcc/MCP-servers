@@ -2,8 +2,9 @@
 """
 Reddit MCP Automation Bot
 
-A bot that discovers and interacts with subreddits related to slime, crafts, kids, parenting, home, and toys.
+A bot that discovers and interacts with subreddits based on configured keywords.
 Uses Groq API to generate friendly, helpful replies and upvotes positive content.
+Supports multiple Reddit accounts via Supabase configuration.
 """
 
 import os
@@ -20,6 +21,10 @@ import praw
 # Import our custom GroqWrapper instead of direct Groq import
 from groq_wrapper import GroqWrapper
 from dotenv import load_dotenv
+# Import Supabase loader for multi-account support
+from supabase_loader import load_bot_config, setup_environment_from_config
+# Import TextBlob for sentiment analysis
+from textblob import TextBlob
 
 # Set up logging
 log_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logs")
@@ -46,21 +51,25 @@ for var in proxy_vars:
         del os.environ[var]
 
 # Constants
-KEYWORDS = ["slime", "crafts", "kids", "parenting", "home", "toys"]
+DEFAULT_KEYWORDS = ["slime", "crafts", "kids", "parenting", "home", "toys"]
 MAX_POSTS_PER_SUBREDDIT = 5
 MAX_COMMENTS_TO_UPVOTE = 3
 SLEEP_BETWEEN_ACTIONS = 5  # seconds - increased to avoid rate limiting
 SLEEP_BETWEEN_POSTS = 10  # seconds - longer delay between posting to avoid rate limiting
 
-# Activity limits
-MAX_SUBREDDITS_PER_RUN = 3  # Maximum number of subreddits to process in a single run
-MAX_TOTAL_REPLIES_PER_RUN = 10  # Maximum number of replies to post in a single run
-MAX_TOTAL_UPVOTES_PER_RUN = 20  # Maximum number of upvotes to perform in a single run
+# Default activity limits (can be overridden by Supabase config)
+DEFAULT_MAX_SUBREDDITS_PER_RUN = 3  # Maximum number of subreddits to process in a single run
+DEFAULT_MAX_TOTAL_REPLIES_PER_RUN = 10  # Maximum number of replies to post in a single run
+DEFAULT_MAX_TOTAL_UPVOTES_PER_RUN = 20  # Maximum number of upvotes to perform in a single run
 
 class RedditBot:
     """Reddit Automation Bot for positive engagement in family-friendly subreddits."""
     
-    def __init__(self, dry_run: bool = False, read_only: bool = False, max_subreddits: int = MAX_SUBREDDITS_PER_RUN, max_replies: int = MAX_TOTAL_REPLIES_PER_RUN, max_upvotes: int = MAX_TOTAL_UPVOTES_PER_RUN):
+    def __init__(self, dry_run: bool = False, read_only: bool = False, 
+                 max_subreddits: int = DEFAULT_MAX_SUBREDDITS_PER_RUN, 
+                 max_replies: int = DEFAULT_MAX_TOTAL_REPLIES_PER_RUN, 
+                 max_upvotes: int = DEFAULT_MAX_TOTAL_UPVOTES_PER_RUN,
+                 config: Dict[str, Any] = None):
         """Initialize the Reddit bot with API credentials.
         
         Args:
@@ -69,16 +78,27 @@ class RedditBot:
         """
         self.dry_run = dry_run
         self.read_only = read_only or dry_run  # Always use read_only for dry_run
-        self.max_subreddits = max_subreddits
-        self.max_replies = max_replies
-        self.max_upvotes = max_upvotes
+        self.config = config or {}
+        
+        # Set limits from config if available, otherwise use defaults
+        self.max_subreddits = self.config.get('max_subs', max_subreddits)
+        self.max_replies = self.config.get('max_replies', max_replies)
+        self.max_upvotes = self.config.get('max_upvotes', max_upvotes)
+        
+        # Get keywords and fixed subreddits from config
+        self.keywords = self.config.get('keywords', DEFAULT_KEYWORDS)
+        self.fixed_subs = self.config.get('fixed_subs', [])
         
         # Activity counters
         self.replies_made = 0
         self.upvotes_made = 0
         
-        logger.info(f"Initializing Reddit Bot (Dry Run: {dry_run}, Read Only: {self.read_only})")
-        logger.info(f"Activity limits: {max_subreddits} subreddits, {max_replies} replies, {max_upvotes} upvotes")
+        # Bot ID for logging
+        self.bot_id = self.config.get('id', 'default')
+        
+        logger.info(f"Initializing Reddit Bot ID: {self.bot_id} (Dry Run: {dry_run}, Read Only: {self.read_only})")
+        logger.info(f"Activity limits: {self.max_subreddits} subreddits, {self.max_replies} replies, {self.max_upvotes} upvotes")
+        logger.info(f"Using {len(self.keywords)} keywords and {len(self.fixed_subs)} fixed subreddits")
         
         # Initialize Reddit API client
         try:
@@ -88,6 +108,7 @@ class RedditBot:
                 self.reddit = praw.Reddit(
                     client_id=os.environ.get("REDDIT_CLIENT_ID"),
                     client_secret=os.environ.get("REDDIT_CLIENT_SECRET"),
+                    refresh_token=os.environ.get("REDDIT_REFRESH_TOKEN"),
                     user_agent=os.environ.get("REDDIT_USER_AGENT", "windows:slime_bot:1.0 (by u/Slime_newbie)"),
                     redirect_uri=os.environ.get("REDDIT_REDIRECT_URI", "http://localhost:8000/reddit/callback"),
                     check_for_updates=False,
@@ -96,6 +117,8 @@ class RedditBot:
                 logger.info("Successfully initialized Reddit client in read-only mode")
             else:
                 # For actual posting, we need full authentication
+                # Use custom user agent from config if available
+                user_agent = os.environ.get("REDDIT_USER_AGENT", f"windows:bot:{self.bot_id}:1.0")
                 try:
                     # First try using refresh token (OAuth) authentication
                     refresh_token = os.environ.get("REDDIT_REFRESH_TOKEN")
@@ -141,10 +164,15 @@ class RedditBot:
         logger.info("Initializing Groq client using GroqWrapper...")
         self.groq_wrapper = GroqWrapper()
         
-        # Test if the wrapper was initialized successfully
+        # Initialize Groq wrapper for AI-generated replies
+        self.groq_wrapper = GroqWrapper()
+        
+        # Set custom system prompt if provided in config
+        self.custom_prompt = self.config.get('groq_prompt', None)
+        
         if self.groq_wrapper.client:
-            logger.info("Groq wrapper initialized successfully")
-            test_response = self.groq_wrapper.generate_completion("Hello")
+            # Test the Groq wrapper
+            test_response = self.groq_wrapper.generate_completion("Say hello!")
             logger.info(f"Test response from Groq: {test_response}")
         else:
             logger.warning("Groq wrapper could not initialize a client, will use fallback responses")
@@ -205,56 +233,79 @@ class RedditBot:
         self.interaction_log.append(interaction)
         self._save_interaction_log()
     
-    def discover_subreddits(self) -> List[str]:
-        """Discover active subreddits related to our keywords."""
-        discovered_subreddits = set()
+    def discover_subreddits(self):
+        """Discover active subreddits related to our keywords or use fixed subreddits."""
+        discovered_subreddits = []
         
-        logger.info(f"Discovering subreddits using keywords: {KEYWORDS}")
+        # If we have fixed subreddits in config, use those instead of discovering
+        if self.fixed_subs and len(self.fixed_subs) > 0:
+            logger.info(f"Using {len(self.fixed_subs)} fixed subreddits from config")
+            # Make a copy to avoid modifying the original list
+            fixed_subs_copy = self.fixed_subs.copy()
+            # Randomize order
+            random.shuffle(fixed_subs_copy)
+            # Limit to max_subreddits
+            discovered_subreddits = fixed_subs_copy[:self.max_subreddits]
+            logger.info(f"Selected {len(discovered_subreddits)} fixed subreddits: {', '.join(discovered_subreddits)}")
+            return discovered_subreddits
         
-        # In dry run mode with authentication issues, use a predefined list of relevant subreddits
-        if self.dry_run:
-            # These are popular subreddits related to our keywords
-            predefined_subreddits = [
-                "slime", "crafts", "DIY", "parenting", "Parenting", "crafting", 
-                "slimerancher", "SlimeRancher", "kidscrafts", "toys", "toyexchange", 
-                "homemaking", "homeimprovement", "organization"
-            ]
-            
-            logger.info(f"Using predefined list of {len(predefined_subreddits)} subreddits for dry run")
-            for subreddit_name in predefined_subreddits:
-                discovered_subreddits.add(subreddit_name)
-                logger.info(f"Added predefined subreddit: r/{subreddit_name}")
-            
-            return list(discovered_subreddits)
-        
-        # If not in dry run mode or if we have proper authentication, discover subreddits dynamically
-        for keyword in KEYWORDS:
-            try:
-                logger.info(f"Searching for subreddits with keyword: {keyword}")
-                search_results = self.reddit.subreddits.search(keyword, limit=5)
+        try:
+            # Search for subreddits related to our keywords
+            for keyword in self.keywords:
+                logger.info(f"Searching for subreddits related to '{keyword}'")
+                
+                # Use Reddit's search to find related subreddits
+                search_results = list(self.reddit.subreddits.search(keyword, limit=5))
                 
                 for subreddit in search_results:
-                    # Only include active subreddits with at least 1000 subscribers
-                    # Handle case where subscribers might be None
-                    if subreddit.subscribers is not None and subreddit.subscribers > 1000:
-                        discovered_subreddits.add(subreddit.display_name)
-                        logger.info(f"Found subreddit: r/{subreddit.display_name} with {subreddit.subscribers} subscribers")
-                
-                # Respect rate limits
-                time.sleep(SLEEP_BETWEEN_ACTIONS)
-                
-            except Exception as e:
-                logger.error(f"Error discovering subreddits for keyword '{keyword}': {e}")
-        
-        return list(discovered_subreddits)
+                    # Skip NSFW subreddits
+                    if subreddit.over18:
+                        logger.info(f"Skipping NSFW subreddit: r/{subreddit.display_name}")
+                        continue
+                        
+                    # Skip subreddits with very low subscriber counts
+                    if subreddit.subscribers < 1000:
+                        logger.info(f"Skipping small subreddit: r/{subreddit.display_name} ({subreddit.subscribers} subscribers)")
+                        continue
+                    
+                    # Add to our list of discovered subreddits
+                    discovered_subreddits.append(subreddit.display_name)
+                    logger.info(f"Discovered subreddit: r/{subreddit.display_name} ({subreddit.subscribers} subscribers)")
+            
+            # Remove duplicates and randomize order
+            discovered_subreddits = list(set(discovered_subreddits))
+            random.shuffle(discovered_subreddits)
+            
+            # Limit to max_subreddits
+            discovered_subreddits = discovered_subreddits[:self.max_subreddits]
+            
+            logger.info(f"Discovered {len(discovered_subreddits)} subreddits: {', '.join(discovered_subreddits)}")
+            return discovered_subreddits
+            
+        except Exception as e:
+            logger.error(f"Error discovering subreddits: {e}")
+            return []
     
     def check_reply_sentiment(self, reply: str) -> bool:
-        """Check if a reply has appropriate sentiment and content.
+        """Check if a reply is appropriate using sentiment score + keyword filter.
         
         Returns:
             bool: True if the reply is positive and appropriate, False otherwise
         """
-        # List of negative phrases or patterns that indicate an inappropriate response
+        reply_lower = reply.lower()
+
+        # 1. TextBlob sentiment analysis
+        blob = TextBlob(reply)
+        polarity = blob.sentiment.polarity  # -1 (very negative) to +1 (very positive)
+        subjectivity = blob.sentiment.subjectivity
+
+        logger.info(f"Reply sentiment — Polarity: {polarity:.2f}, Subjectivity: {subjectivity:.2f}")
+
+        if polarity < 0.1:
+            logger.warning(f"Rejected reply due to low sentiment score ({polarity:.2f}): {reply}")
+            return False
+
+        # 2. Keyword-based rejection for obviously toxic or dismissive replies
         negative_patterns = [
             "no idea", "don't know", "not sure", "can't help", "sorry", 
             "don't understand", "what are you talking about", "confused",
@@ -265,66 +316,62 @@ class RedditBot:
             "can't stand", "annoying", "irritating", "frustrating",
             "wtf", "what the", "huh?", "eh?", "um", "uh"
         ]
-        
-        # Check for negative patterns
-        reply_lower = reply.lower()
+
         for pattern in negative_patterns:
             if pattern in reply_lower:
-                logger.warning(f"Rejected reply due to negative pattern '{pattern}': {reply}")
+                logger.warning(f"Rejected reply due to pattern '{pattern}': {reply}")
                 return False
-        
-        # Check for minimum length (too short might be dismissive)
+
+        # 3. Minimum word count (prevents "meh" or one-word replies)
         if len(reply.split()) < 3:
-            logger.warning(f"Rejected reply due to being too short: {reply}")
+            logger.warning(f"Rejected reply due to short length: {reply}")
             return False
-        
-        # Check for question marks (we want statements, not questions)
-        if reply.count('?') > 0 and not any(positive in reply_lower for positive in ["cool", "awesome", "nice", "love", "great"]):
-            logger.warning(f"Rejected reply because it's a question without positive sentiment: {reply}")
+
+        # 4. Reject questions unless clearly positive
+        if reply.count('?') > 0 and not any(word in reply_lower for word in ["cool", "awesome", "nice", "love", "great"]):
+            logger.warning(f"Rejected question-style reply: {reply}")
             return False
-            
+
         return True
     
-    def generate_reply(self, post_title: str, post_content: str) -> str:
+    def generate_reply(self, post_title: str, post_content: str):
         """Generate a friendly reply using our GroqWrapper."""
-        messages = [
-            {
-                "role": "system",
-                "content": (
-                    "You are a POSITIVE and SUPPORTIVE Reddit commenter responding to posts about slime, crafts, parenting, and toys. "
-                    "Your replies MUST be warm, encouraging, and helpful - never confused, dismissive, or negative. "
-                    "Limit replies to 1-2 concise, supportive sentences. Maximum 25 words total. "
-                    "Sound casual and warm like a fellow parent or crafter - not overly formal. "
-                    "Use a conversational tone. No quotes, no greetings, no summarizing. "
-                    "If you're unsure what the post is about, respond with something generally positive about creativity or sharing."
-                )
-            },
-            {
-                "role": "user",
-                "content": (
-                    f"Write a super brief, casual, POSITIVE Reddit reply. Be supportive and encouraging.\n\n"
-                    f"Title: {post_title}\nContent: {post_content}\n\nReply:"
-                )
-            }
-        ]
-        
-        # Try up to 3 times to get a good reply
-        for attempt in range(3):
-            reply = self.groq_wrapper.generate_completion(messages)
+        try:
+            # Create a prompt for the Groq API
+            prompt = f"""Post Title: {post_title}
+
+Post Content: {post_content}
+
+Please write a brief, friendly, and supportive reply to this Reddit post. Keep it under 25 words."""
             
-            if self.check_reply_sentiment(reply):
-                return reply
+            # Generate a reply using our Groq wrapper
+            if self.custom_prompt and self.groq_wrapper.client:
+                # If we have a custom system prompt in the config, use it
+                messages = [
+                    {
+                        "role": "system",
+                        "content": self.custom_prompt
+                    },
+                    {
+                        "role": "user",
+                        "content": prompt
+                    }
+                ]
+                reply = self.groq_wrapper.generate_completion(messages)
+            else:
+                # Otherwise use the default prompt in the groq_wrapper
+                reply = self.groq_wrapper.generate_completion(prompt)
             
-            logger.info(f"Attempt {attempt+1} produced inappropriate reply, trying again...")
-        
-        # If all attempts failed, use a safe fallback response
-        fallback_responses = [
-            "Love this idea! Thanks for sharing your creativity.",
-            "This is so cool! Really appreciate you sharing.",
-            "Awesome work! This community always has the best ideas.",
-            "So creative! Can't wait to see what you make next.",
-            "This is fantastic! Thanks for the inspiration."
-        ]
+            # Check if the reply is appropriate
+            if not self.check_reply_sentiment(reply):
+                logger.warning(f"Generated reply failed sentiment check: {reply}")
+                return None
+                
+            return reply
+            
+        except Exception as e:
+            logger.error(f"Error generating reply: {e}")
+            return None
         
         logger.warning("Using fallback response after multiple failed attempts")
         return random.choice(fallback_responses)
@@ -419,8 +466,11 @@ class RedditBot:
                         logger.info(f"Posted reply to: {post.id}")
                         self.replied_posts.add(post.id)
                         self.replies_made += 1
-                        # Use longer sleep after posting to avoid rate limiting
-                        time.sleep(SLEEP_BETWEEN_POSTS)
+                        
+                        # Natural delay after commenting (1-3 minutes)
+                        comment_delay = random.randint(60, 180)
+                        logger.info(f"Adding natural delay of {comment_delay} seconds after commenting...")
+                        time.sleep(comment_delay)
                     except Exception as e:
                         if "RATELIMIT" in str(e):
                             logger.warning(f"Rate limited by Reddit: {e}")
@@ -435,6 +485,10 @@ class RedditBot:
                     logger.info(f"{mode} Would reply to post {post.id} with: {reply_text}")
                     # Count simulated replies too
                     self.replies_made += 1
+                    
+                    # Simulate natural delay in dry run mode
+                    comment_delay = random.randint(60, 180)
+                    logger.info(f"{mode} Would add natural delay of {comment_delay} seconds after commenting")
                 
                 # Log the interaction
                 self._log_interaction("reply", subreddit_name, post_id=post.id, content=reply_text)
@@ -489,8 +543,10 @@ class RedditBot:
                         self._log_interaction("upvote", subreddit_name, comment_id=mock_comment_id)
                         self.upvotes_made += 1
                 
-                # Respect rate limits
-                time.sleep(SLEEP_BETWEEN_ACTIONS)
+                # Only add a small delay between post processing if we didn't just comment
+                # (If we commented, we already added a longer natural delay)
+                if not reply_text:  # No comment was made, just add a small delay
+                    time.sleep(SLEEP_BETWEEN_ACTIONS)
                 
         except Exception as e:
             logger.error(f"Error processing subreddit r/{subreddit_name}: {e}")
@@ -566,15 +622,34 @@ def main():
     parser.add_argument("--subreddit", type=str, help="Process a specific subreddit only")
     parser.add_argument("--limit", type=int, default=2, help="Maximum number of posts to process per subreddit")
     parser.add_argument("--force-auth", action="store_true", help="Force authentication attempt even if it failed previously")
-    parser.add_argument("--max-subreddits", type=int, default=MAX_SUBREDDITS_PER_RUN, 
-                      help=f"Maximum number of subreddits to process (default: {MAX_SUBREDDITS_PER_RUN})")
-    parser.add_argument("--max-replies", type=int, default=MAX_TOTAL_REPLIES_PER_RUN, 
-                      help=f"Maximum number of replies to post (default: {MAX_TOTAL_REPLIES_PER_RUN})")
-    parser.add_argument("--max-upvotes", type=int, default=MAX_TOTAL_UPVOTES_PER_RUN, 
-                      help=f"Maximum number of upvotes to perform (default: {MAX_TOTAL_UPVOTES_PER_RUN})")
+    parser.add_argument("--max-subreddits", type=int, default=DEFAULT_MAX_SUBREDDITS_PER_RUN, 
+                      help=f"Maximum number of subreddits to process (default: {DEFAULT_MAX_SUBREDDITS_PER_RUN})")
+    parser.add_argument("--max-replies", type=int, default=DEFAULT_MAX_TOTAL_REPLIES_PER_RUN, 
+                      help=f"Maximum number of replies to post (default: {DEFAULT_MAX_TOTAL_REPLIES_PER_RUN})")
+    parser.add_argument("--max-upvotes", type=int, default=DEFAULT_MAX_TOTAL_UPVOTES_PER_RUN, 
+                      help=f"Maximum number of upvotes to perform (default: {DEFAULT_MAX_TOTAL_UPVOTES_PER_RUN})")
+    parser.add_argument("--bot-id", type=str, default=os.environ.get("BOT_ID"), 
+                      help="Bot ID to load configuration from Supabase (defaults to BOT_ID env var)")
+    parser.add_argument("--comment-delay", action="store_true",
+                      help="Enable natural delays (1-3 minutes) after commenting")
     args = parser.parse_args()
     
     logger.info(f"Starting Reddit MCP Automation Bot (Dry Run: {args.dry_run}, Read Only: {args.read_only})")
+    
+    # Load bot configuration from Supabase if bot_id is provided
+    bot_config = None
+    if args.bot_id:
+        try:
+            logger.info(f"Loading configuration for bot ID: {args.bot_id}")
+            bot_config = load_bot_config(args.bot_id)
+            
+            # Set environment variables from bot config for downstream code
+            setup_environment_from_config(bot_config)
+            
+            logger.info(f"Successfully loaded configuration for bot ID: {args.bot_id}")
+        except Exception as e:
+            logger.error(f"Failed to load bot configuration: {e}")
+            sys.exit(1)
     
     # If force-auth is specified, temporarily set read_only to False to force an authentication attempt
     read_only = args.read_only
@@ -582,13 +657,14 @@ def main():
         logger.info("Force authentication mode enabled - will attempt to authenticate even if read-only is specified")
         read_only = False
     
-    # Initialize the bot with activity limits
+    # Initialize the bot with activity limits and config
     bot = RedditBot(
         dry_run=args.dry_run, 
         read_only=read_only,
         max_subreddits=args.max_subreddits,
         max_replies=args.max_replies,
-        max_upvotes=args.max_upvotes
+        max_upvotes=args.max_upvotes,
+        config=bot_config
     )
     
     # If a specific subreddit was provided, only process that one
