@@ -18,16 +18,10 @@ jobs:
     runs-on: ubuntu-22.04  # 👈 fix: use a stable Ubuntu version
     strategy:
       matrix:
-        # This list can be updated as new bots are added
         bot_id: ["slime", "truck1", "truck2"]
-        # If a specific bot_id was provided via workflow_dispatch, only run that one
-        exclude:
-          - bot_id: "slime"
-            if: "${{ github.event.inputs.bot_id != '' && github.event.inputs.bot_id != 'slime' }}"
-          - bot_id: "truck1"
-            if: "${{ github.event.inputs.bot_id != '' && github.event.inputs.bot_id != 'truck1' }}"
-          - bot_id: "truck2"
-            if: "${{ github.event.inputs.bot_id != '' && github.event.inputs.bot_id != 'truck2' }}"
+
+    # Job-level conditional execution
+    if: ${{ github.event.inputs.bot_id == '' || matrix.bot_id == github.event.inputs.bot_id }}
     env:
       SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
       SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
