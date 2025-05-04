@@ -19,9 +19,6 @@ jobs:
     strategy:
       matrix:
         bot_id: ["slime", "truck1", "truck2"]
-
-    # Job-level conditional execution
-    if: ${{ github.event.inputs.bot_id == '' || matrix.bot_id == github.event.inputs.bot_id }}
     env:
       SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
       SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
@@ -70,6 +67,7 @@ jobs:
           python servers/reddit_server/github_actions_test.py
           
       - name: Run bot
+        if: ${{ github.event.inputs.bot_id == '' || matrix.bot_id == github.event.inputs.bot_id }}
         run: |
           python servers/reddit_server/bot_runner.py --dry-run --max-subreddits 20 --max-replies 2 --max-upvotes 4 --bot-id ${{ matrix.bot_id }}
           # python servers/reddit_server/bot_runner.py --dry-run --max-subreddits 20 --max-replies 2 --max-upvotes 4 --bot-id ${{ matrix.bot_id }}
