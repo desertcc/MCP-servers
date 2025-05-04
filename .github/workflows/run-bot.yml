@@ -1,12 +1,12 @@
 name: Reddit MCP Bot
 
 on:
-  schedule:
-    - cron: "28 13 * * *"   # 6:28 AM PST
-    - cron: "34 16 * * *"   # 9:34 AM PST
-    - cron: "8 19 * * *"    # 12:08 PM PST
-    - cron: "55 21 * * *"   # 2:55 PM PST
-    - cron: "18 5 * * *"    # 10:18 PM PST
+  # schedule:
+  #   - cron: "28 13 * * *"
+  #   - cron: "34 16 * * *"
+  #   - cron: "8 19 * * *"
+  #   - cron: "55 21 * * *"
+  #   - cron: "18 5 * * *"
   workflow_dispatch:
 
 jobs:
