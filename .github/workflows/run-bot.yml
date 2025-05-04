@@ -77,7 +77,7 @@ jobs:
           
       - name: Run bot
         run: |
-python servers/reddit_server/bot_runner.py --dry-run --max-subreddits 20 --max-replies 2 --max-upvotes 4 --bot-id ${{ matrix.bot_id }}
-# python servers/reddit_server/bot_runner.py --dry-run --max-subreddits 20 --max-replies 2 --max-upvotes 4 --bot-id ${{ matrix.bot_id }}
+          python servers/reddit_server/bot_runner.py --dry-run --max-subreddits 20 --max-replies 2 --max-upvotes 4 --bot-id ${{ matrix.bot_id }}
+          # python servers/reddit_server/bot_runner.py --dry-run --max-subreddits 20 --max-replies 2 --max-upvotes 4 --bot-id ${{ matrix.bot_id }}
 
 
