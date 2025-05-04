@@ -69,7 +69,7 @@ jobs:
       - name: Run bot
         if: ${{ github.event.inputs.bot_id == '' || matrix.bot_id == github.event.inputs.bot_id }}
         run: |
-          python servers/reddit_server/bot_runner.py --dry-run --max-subreddits 20 --max-replies 2 --max-upvotes 4 --bot-id ${{ matrix.bot_id }}
           # python servers/reddit_server/bot_runner.py --dry-run --max-subreddits 20 --max-replies 2 --max-upvotes 4 --bot-id ${{ matrix.bot_id }}
+          python servers/reddit_server/bot_runner.py --dry-run --max-subreddits 20 --max-replies 2 --max-upvotes 4 --bot-id ${{ matrix.bot_id }}
 
 
