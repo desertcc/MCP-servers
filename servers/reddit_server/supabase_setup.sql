@@ -1,5 +1,5 @@
 /* 
-Supabase setup for Reddit Bot Multi-Account Configuration
+Supabase test setup for Reddit Bot Multi-Account Configuration
 Run this in the Supabase SQL Editor to set up the required table 
 */
 
