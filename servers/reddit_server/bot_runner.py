@@ -490,29 +490,32 @@ class RedditBot:
     def generate_reply(self, post_title: str, post_content: str):
         """Generate a friendly reply using our GroqWrapper."""
         try:
-            # Create a prompt for the Groq API
-            prompt = f"""Post Title: {post_title}
-
-Post Content: {post_content}
-
-Please write a brief, friendly, and supportive reply to this Reddit post. Keep it under 25 words. DO NOT use quotation marks in your response."""
-            
             # Generate a reply using our Groq wrapper
             if self.custom_prompt and self.groq_wrapper.client:
                 # If we have a custom system prompt in the config, use it
+                # Create a clean prompt that just provides the post content
+                clean_prompt = f"""Post Title: {post_title}
+
+Post Content: {post_content}"""
+                
                 messages = [
                     {
                         "role": "system",
-                        "content": self.custom_prompt + " IMPORTANT: NEVER use quotation marks in your responses."
+                        "content": self.custom_prompt
                     },
                     {
                         "role": "user",
-                        "content": prompt
+                        "content": clean_prompt
                     }
                 ]
                 reply = self.groq_wrapper.generate_completion(messages)
             else:
                 # Otherwise use the default prompt in the groq_wrapper
+                prompt = f"""Post Title: {post_title}
+
+Post Content: {post_content}
+
+Please write a brief, friendly, and supportive reply to this Reddit post. Keep it under 25 words."""
                 reply = self.groq_wrapper.generate_completion(prompt)
             
             # Strip any quotation marks from the reply
