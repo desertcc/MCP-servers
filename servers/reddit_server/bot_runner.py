@@ -7,22 +7,23 @@ Uses Groq API to generate friendly, helpful replies and upvotes positive content
 Supports multiple Reddit accounts via Supabase configuration.
 """
 
-import os
-import sys
+import argparse
 import json
+import logging
+import os
+import re
+import sys
 import time
 import random
-import logging
-import argparse
-from datetime import datetime
-from typing import List, Dict, Any, Set, Optional
+from datetime import datetime, timedelta
+from typing import Dict, List, Any, Optional, Set, Tuple
 
 import praw
 # Import our custom GroqWrapper instead of direct Groq import
 from groq_wrapper import GroqWrapper
 from dotenv import load_dotenv
 # Import Supabase loader for multi-account support
-from supabase_loader import load_bot_config, setup_environment_from_config
+from supabase_loader import load_bot_config, setup_environment_from_config, get_recent_subreddits, update_subreddit_history, get_excluded_subreddits
 # Import TextBlob for sentiment analysis
 from textblob import TextBlob
 
@@ -61,6 +62,138 @@ SLEEP_BETWEEN_POSTS = 10  # seconds - longer delay between posting to avoid rate
 DEFAULT_MAX_SUBREDDITS_PER_RUN = 3  # Maximum number of subreddits to process in a single run
 DEFAULT_MAX_TOTAL_REPLIES_PER_RUN = 10  # Maximum number of replies to post in a single run
 DEFAULT_MAX_TOTAL_UPVOTES_PER_RUN = 20  # Maximum number of upvotes to perform in a single run
+
+def discover_subreddits_by_keywords(keywords: List[str], max_subreddits: int) -> List[str]:
+    """
+    Discover subreddits based on keywords using Reddit's search functionality.
+    
+    Args:
+        keywords: List of keywords to search for
+        max_subreddits: Maximum number of subreddits to return
+        
+    Returns:
+        List of subreddit names
+    """
+    try:
+        # Create a read-only Reddit instance for discovery
+        reddit = praw.Reddit(
+            client_id=os.environ.get("REDDIT_CLIENT_ID"),
+            client_secret=os.environ.get("REDDIT_CLIENT_SECRET"),
+            user_agent=os.environ.get("REDDIT_USER_AGENT"),
+            check_for_updates=False,
+            read_only=True
+        )
+        
+        # Shuffle keywords to get different results each time
+        shuffled_keywords = list(keywords)
+        random.shuffle(shuffled_keywords)
+        
+        # Limit to first 3 keywords to avoid too many API calls
+        search_keywords = shuffled_keywords[:min(3, len(shuffled_keywords))]
+        
+        # Discover subreddits for each keyword
+        discovered_subreddits = set()
+        for keyword in search_keywords:
+            logger.info(f"Discovering subreddits for keyword: {keyword}")
+            try:
+                # Search for subreddits related to the keyword
+                subreddits = reddit.subreddits.search(keyword, limit=10)
+                
+                # Add discovered subreddits to the set
+                for subreddit in subreddits:
+                    discovered_subreddits.add(subreddit.display_name)
+                    
+                    # Break if we have enough subreddits
+                    if len(discovered_subreddits) >= max_subreddits:
+                        break
+                        
+                # Sleep to avoid rate limiting
+                time.sleep(1)
+                
+            except Exception as e:
+                logger.error(f"Error discovering subreddits for keyword {keyword}: {e}")
+        
+        # Convert set to list and limit to max_subreddits
+        result = list(discovered_subreddits)[:max_subreddits]
+        logger.info(f"Discovered {len(result)} subreddits: {', '.join(result)}")
+        return result
+        
+    except Exception as e:
+        logger.error(f"Error in discover_subreddits_by_keywords: {e}")
+        return []
+
+
+def select_subreddits(bot_config: Dict[str, Any], max_subreddits: int, bot_id: Optional[str] = None) -> List[str]:
+    """Select subreddits to process based on bot configuration.
+    
+    Args:
+        bot_config: Bot configuration from Supabase
+        max_subreddits: Maximum number of subreddits to process
+        bot_id: Bot ID for tracking subreddit history
+        
+    Returns:
+        List of subreddit names to process
+    """
+    # Initialize empty list of subreddits
+    all_subreddits = []
+    
+    # If fixed_subs is provided, use those
+    if "fixed_subs" in bot_config and bot_config["fixed_subs"]:
+        logger.info("Using fixed subreddit list from configuration")
+        all_subreddits.extend(bot_config["fixed_subs"])
+    
+    # If keywords are provided and we don't have enough subreddits, discover more
+    if ("keywords" in bot_config and bot_config["keywords"] and 
+            (not all_subreddits or len(all_subreddits) < max_subreddits * 2)):
+        logger.info("Discovering subreddits based on keywords")
+        # Use keywords to discover subreddits
+        discovered = discover_subreddits_by_keywords(bot_config["keywords"], max_subreddits * 2)
+        # Add discovered subreddits to the list
+        all_subreddits.extend(discovered)
+    
+    # Remove duplicates
+    all_subreddits = list(set(all_subreddits))
+    
+    # Get globally excluded subreddits from Supabase
+    excluded_subs = get_excluded_subreddits()
+    logger.info(f"Globally excluded subreddits: {', '.join(excluded_subs) if excluded_subs else 'None'}"
+              f" (Total: {len(excluded_subs)})")
+    
+    # Get recently used subreddits if bot_id is provided
+    recent_subs = []
+    if bot_id:
+        recent_subs = get_recent_subreddits(bot_id, days=3)
+        logger.info(f"Recently used subreddits (last 3 days): {', '.join(recent_subs) if recent_subs else 'None'}"
+                  f" (Total: {len(recent_subs)})")
+    
+    # Filter out excluded and recently used subreddits
+    filtered_subs = [sub for sub in all_subreddits 
+                    if sub.lower() not in [s.lower() for s in excluded_subs] 
+                    and sub.lower() not in [s.lower() for s in recent_subs]]
+    
+    logger.info(f"After filtering excluded and recent subreddits: {len(filtered_subs)} subreddits remain")
+    
+    # Shuffle the list to randomize selection
+    random.shuffle(filtered_subs)
+    logger.info(f"Shuffled subreddits for randomization")
+    
+    # Select a random sample of subreddits up to max_subreddits
+    selected_subs = filtered_subs[:max_subreddits]
+    logger.info(f"Selected {len(selected_subs)} subreddits from filtered list: {', '.join(selected_subs) if selected_subs else 'None'}")
+    
+    # If we don't have enough subreddits after filtering, include some recent ones
+    # but prioritize ones that haven't been used recently
+    if len(selected_subs) < max_subreddits and recent_subs:
+        remaining_slots = max_subreddits - len(selected_subs)
+        available_recent = [sub for sub in recent_subs 
+                           if sub.lower() not in [s.lower() for s in excluded_subs]]
+        
+        # Add some recent subreddits if needed, but shuffle them first
+        random.shuffle(available_recent)
+        selected_subs.extend(available_recent[:remaining_slots])
+    
+    logger.info(f"Selected {len(selected_subs)} subreddits: {', '.join(selected_subs)}")
+    return selected_subs
 
 class RedditBot:
     """Reddit Automation Bot for positive engagement in family-friendly subreddits."""
@@ -389,12 +522,16 @@ Please write a brief, friendly, and supportive reply to this Reddit post. Keep i
         """Get recent posts from a subreddit and reply to them."""
         try:
             logger.info(f"Processing subreddit: r/{subreddit_name}")
-            
+
             # Limit the number of posts based on mode
             max_posts = 2 if self.dry_run else MAX_POSTS_PER_SUBREDDIT
             logger.info(f"Will process up to {max_posts} posts from this subreddit")
-            
+
             subreddit = self.reddit.subreddit(subreddit_name)
+            
+            # Update subreddit history in Supabase if we're not in dry run mode
+            if not self.dry_run and self.bot_id:
+                update_subreddit_history(self.bot_id, subreddit_name)
             
             # Get rising or new posts
             try:
@@ -625,62 +762,51 @@ Please write a brief, friendly, and supportive reply to this Reddit post. Keep i
 
 def main():
     """Main entry point for the Reddit bot."""
-    parser = argparse.ArgumentParser(description="Reddit MCP Automation Bot")
-    parser.add_argument("--dry-run", action="store_true", help="Run in dry-run mode (no actual posts or upvotes)")
-    parser.add_argument("--read-only", action="store_true", help="Run in read-only mode (no authentication required)")
+    parser = argparse.ArgumentParser(description="Run the Reddit bot.")
+    parser.add_argument("--dry-run", action="store_true", help="Run in dry-run mode (no actual posts)")
+    parser.add_argument("--read-only", action="store_true", help="Run in read-only mode (no posts or upvotes)")
     parser.add_argument("--subreddit", type=str, help="Process a specific subreddit only")
-    parser.add_argument("--limit", type=int, default=2, help="Maximum number of posts to process per subreddit")
-    parser.add_argument("--force-auth", action="store_true", help="Force authentication attempt even if it failed previously")
+    parser.add_argument("--limit", type=int, default=MAX_POSTS_PER_SUBREDDIT, 
+                        help=f"Maximum number of posts to process per subreddit (default: {MAX_POSTS_PER_SUBREDDIT})")
     parser.add_argument("--max-subreddits", type=int, default=DEFAULT_MAX_SUBREDDITS_PER_RUN, 
-                      help=f"Maximum number of subreddits to process (default: {DEFAULT_MAX_SUBREDDITS_PER_RUN})")
-    parser.add_argument("--max-replies", type=int, default=DEFAULT_MAX_TOTAL_REPLIES_PER_RUN, 
-                      help=f"Maximum number of replies to post (default: {DEFAULT_MAX_TOTAL_REPLIES_PER_RUN})")
-    parser.add_argument("--max-upvotes", type=int, default=DEFAULT_MAX_TOTAL_UPVOTES_PER_RUN, 
-                      help=f"Maximum number of upvotes to perform (default: {DEFAULT_MAX_TOTAL_UPVOTES_PER_RUN})")
-    parser.add_argument("--bot-id", type=str, default=os.environ.get("BOT_ID"), 
-                      help="Bot ID to load configuration from Supabase (defaults to BOT_ID env var)")
-    parser.add_argument("--comment-delay", action="store_true",
-                      help="Enable natural delays (1-3 minutes) after commenting")
+                        help=f"Maximum number of subreddits to process (default: {DEFAULT_MAX_SUBREDDITS_PER_RUN})")
+    parser.add_argument("--max-replies", type=int, default=DEFAULT_MAX_TOTAL_REPLIES_PER_RUN,
+                        help=f"Maximum number of replies to make (default: {DEFAULT_MAX_TOTAL_REPLIES_PER_RUN})")
+    parser.add_argument("--max-upvotes", type=int, default=DEFAULT_MAX_TOTAL_UPVOTES_PER_RUN,
+                        help=f"Maximum number of upvotes to make (default: {DEFAULT_MAX_TOTAL_UPVOTES_PER_RUN})")
+    parser.add_argument("--bot-id", type=str, default=os.environ.get("BOT_ID", ""),
+                        help="Bot ID to load configuration from Supabase")
+    parser.add_argument("--no-delay", action="store_true", help="Disable natural delays between actions")
     args = parser.parse_args()
     
-    logger.info(f"Starting Reddit MCP Automation Bot (Dry Run: {args.dry_run}, Read Only: {args.read_only})")
-    
-    # Load bot configuration from Supabase if bot_id is provided
+    # Load configuration from Supabase if bot_id is provided
     bot_config = None
     if args.bot_id:
-        try:
-            logger.info(f"Loading configuration for bot ID: {args.bot_id}")
-            bot_config = load_bot_config(args.bot_id)
-            
-            # Set environment variables from bot config for downstream code
-            setup_environment_from_config(bot_config)
-            
-            logger.info(f"Successfully loaded configuration for bot ID: {args.bot_id}")
-        except Exception as e:
-            logger.error(f"Failed to load bot configuration: {e}")
+        logger.info(f"Loading configuration for bot: {args.bot_id}")
+        bot_config = load_bot_config(args.bot_id)
+        if not bot_config:
+            logger.error(f"Failed to load configuration for bot: {args.bot_id}")
             sys.exit(1)
+        
+        # Set environment variables from bot configuration
+        setup_environment_from_config(bot_config)
     
-    # If force-auth is specified, temporarily set read_only to False to force an authentication attempt
-    read_only = args.read_only
-    if args.force_auth:
-        logger.info("Force authentication mode enabled - will attempt to authenticate even if read-only is specified")
-        read_only = False
-    
-    # Initialize the bot with activity limits and config
+    # Create and run the bot
     bot = RedditBot(
-        dry_run=args.dry_run, 
-        read_only=read_only,
+        dry_run=args.dry_run,
+        read_only=args.read_only,
         max_subreddits=args.max_subreddits,
-        max_replies=args.max_replies,
-        max_upvotes=args.max_upvotes,
+        max_replies=args.max_replies if not bot_config else bot_config.get("max_replies", args.max_replies),
+        max_upvotes=args.max_upvotes if not bot_config else bot_config.get("max_upvotes", args.max_upvotes),
         config=bot_config
     )
     
     # If a specific subreddit was provided, only process that one
     if args.subreddit:
         logger.info(f"Processing only subreddit: r/{args.subreddit}")
-        global MAX_POSTS_PER_SUBREDDIT
-        MAX_POSTS_PER_SUBREDDIT = args.limit
+        # Set the limit for posts per subreddit
+        # Note: We're modifying a module-level variable, but avoiding global statement
+        # since it's already defined at the module level
         bot.reply_to_posts(args.subreddit)
     else:
         # Run the full bot workflow

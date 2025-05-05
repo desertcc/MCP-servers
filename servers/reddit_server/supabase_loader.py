@@ -7,7 +7,8 @@ Loads bot configurations from Supabase for the multi-account Reddit bot system.
 
 import os
 import logging
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
+from datetime import datetime, timedelta
 from dotenv import load_dotenv
 
 # Configure logging
@@ -107,6 +108,148 @@ def setup_environment_from_config(config: Dict[str, Any]) -> None:
         if config_key in config and config[config_key]:
             os.environ[env_var] = config[config_key]
             logger.info(f"Set environment variable: {env_var}")
+
+
+def get_recent_subreddits(bot_id: str, days: int = 3) -> List[str]:
+    """
+    Get a list of subreddits that the bot has interacted with recently.
+    
+    Args:
+        bot_id: The ID of the bot
+        days: Number of days to look back
+        
+    Returns:
+        List of subreddit names
+    """
+    try:
+        # Import supabase-py
+        import supabase
+        from supabase import create_client
+        
+        # Get Supabase credentials from environment
+        supabase_url = os.environ.get("SUPABASE_URL")
+        supabase_key = os.environ.get("SUPABASE_SERVICE_KEY")
+        
+        if not supabase_url or not supabase_key:
+            logger.error("SUPABASE_URL and SUPABASE_SERVICE_KEY must be set in environment variables")
+            return []
+        
+        # Initialize Supabase client
+        client = create_client(supabase_url, supabase_key)
+        
+        # Calculate cutoff date
+        cutoff_date = (datetime.now() - timedelta(days=days)).isoformat()
+        
+        # Query the subreddit_history table for recent interactions
+        response = client.table("subreddit_history") \
+            .select("subreddit") \
+            .eq("bot_id", bot_id) \
+            .gte("last_commented_at", cutoff_date) \
+            .execute()
+        
+        # Extract subreddit names from response
+        if response.data:
+            recent_subreddits = [item["subreddit"] for item in response.data]
+            logger.info(f"Found {len(recent_subreddits)} recently used subreddits for bot {bot_id}")
+            return recent_subreddits
+        else:
+            logger.info(f"No recent subreddit history found for bot {bot_id}")
+            return []
+            
+    except Exception as e:
+        logger.error(f"Error fetching recent subreddits: {e}")
+        return []
+
+
+def update_subreddit_history(bot_id: str, subreddit: str) -> bool:
+    """
+    Update the subreddit history to record that the bot has interacted with a subreddit.
+    
+    Args:
+        bot_id: The ID of the bot
+        subreddit: The name of the subreddit
+        
+    Returns:
+        True if successful, False otherwise
+    """
+    try:
+        # Import supabase-py
+        import supabase
+        from supabase import create_client
+        
+        # Get Supabase credentials from environment
+        supabase_url = os.environ.get("SUPABASE_URL")
+        supabase_key = os.environ.get("SUPABASE_SERVICE_KEY")
+        
+        if not supabase_url or not supabase_key:
+            logger.error("SUPABASE_URL and SUPABASE_SERVICE_KEY must be set in environment variables")
+            return False
+        
+        # Initialize Supabase client
+        client = create_client(supabase_url, supabase_key)
+        
+        # Upsert record in subreddit_history table
+        response = client.table("subreddit_history") \
+            .upsert({
+                "bot_id": bot_id,
+                "subreddit": subreddit,
+                "last_commented_at": datetime.now().isoformat()
+            }) \
+            .execute()
+        
+        logger.info(f"Updated subreddit history for bot {bot_id} and subreddit {subreddit}")
+        return True
+            
+    except Exception as e:
+        logger.error(f"Error updating subreddit history: {e}")
+        return False
+
+
+def get_excluded_subreddits() -> List[str]:
+    """
+    Get the global list of excluded subreddits from Supabase.
+    
+    Returns:
+        List of subreddit names to exclude
+    """
+    try:
+        # Import supabase-py
+        import supabase
+        from supabase import create_client
+        
+        # Get Supabase credentials from environment
+        supabase_url = os.environ.get("SUPABASE_URL")
+        supabase_key = os.environ.get("SUPABASE_SERVICE_KEY")
+        
+        if not supabase_url or not supabase_key:
+            logger.error("SUPABASE_URL and SUPABASE_SERVICE_KEY must be set in environment variables")
+            return []
+        
+        logger.info(f"Connecting to Supabase to get excluded subreddits list")
+        
+        # Initialize Supabase client
+        client = create_client(supabase_url, supabase_key)
+        
+        # Query the excluded_subreddits table
+        logger.info(f"Querying excluded_subreddits table")
+        response = client.table("excluded_subreddits") \
+            .select("subreddit") \
+            .execute()
+        
+        # Extract subreddit names from response
+        if response.data:
+            excluded = [item["subreddit"] for item in response.data]
+            logger.info(f"Found {len(excluded)} globally excluded subreddits: {', '.join(excluded)}")
+            return excluded
+        else:
+            logger.info("No globally excluded subreddits found in database")
+            return []
+            
+    except Exception as e:
+        logger.error(f"Error fetching excluded subreddits: {e}")
+        logger.error(f"Exception type: {type(e).__name__}")
+        # Return an empty list as fallback
+        return []
 
 # Test the loader if run directly
 if __name__ == "__main__":

@@ -19,6 +19,21 @@ CREATE TABLE reddit_bots (
   active           bool  DEFAULT true
 );
 
+-- Create a table to track subreddit interaction history
+CREATE TABLE subreddit_history (
+  bot_id           text,
+  subreddit        text,
+  last_commented_at timestamp DEFAULT now(),
+  PRIMARY KEY (bot_id, subreddit)
+);
+
+-- Create a global table for excluded subreddits (opt-out list)
+CREATE TABLE excluded_subreddits (
+  subreddit        text PRIMARY KEY,          -- subreddit name to exclude
+  reason           text,                      -- optional reason for exclusion
+  added_at         timestamp DEFAULT now()    -- when it was added to the exclusion list
+);
+
 -- Optional: Create a runs_log table for tracking quota usage (stretch goal)
 CREATE TABLE runs_log (
   id               SERIAL PRIMARY KEY,
@@ -30,6 +45,14 @@ CREATE TABLE runs_log (
   success          bool DEFAULT true,
   error_message    text
 );
+
+-- Example data for excluded subreddits
+INSERT INTO excluded_subreddits (subreddit, reason) VALUES
+('politics', 'Controversial topics'),
+('news', 'Too much negativity'),
+('worldnews', 'Too much negativity'),
+('conspiracy', 'Controversial topics'),
+('unpopularopinion', 'Controversial topics');
 
 -- Example data for testing (DO NOT USE IN PRODUCTION - REPLACE WITH REAL CREDENTIALS)
 INSERT INTO reddit_bots (
