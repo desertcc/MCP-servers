@@ -6,7 +6,7 @@ on:
     - cron: "34 16 * * *"   # 9:34 AM PST
     - cron: "8 19 * * *"    # 12:08 PM PST
     - cron: "55 21 * * *"   # 2:55 PM PST
-    - cron: "18 5 * * *"    # 10:18 PM PST
+    - cron: "6 3 * * *"    # 10:18 PM PST
   workflow_dispatch:
     inputs:
       bot_id:
