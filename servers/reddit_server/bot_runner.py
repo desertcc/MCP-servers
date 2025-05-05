@@ -222,6 +222,11 @@ class RedditBot:
         self.keywords = self.config.get('keywords', DEFAULT_KEYWORDS)
         self.fixed_subs = self.config.get('fixed_subs', [])
         
+        # Get custom system prompt from config if available
+        self.custom_prompt = self.config.get('groq_prompt')
+        if self.custom_prompt:
+            logger.info(f"Using custom system prompt from config (length: {len(self.custom_prompt)})")
+        
         # Activity counters
         self.replies_made = 0
         self.upvotes_made = 0
@@ -300,10 +305,25 @@ class RedditBot:
         # Initialize Groq wrapper for AI-generated replies
         self.groq_wrapper = GroqWrapper()
         
-        # Set custom system prompt if provided in config
-        self.custom_prompt = self.config.get('groq_prompt', None)
-        
-        if self.groq_wrapper.client:
+        # Test the custom prompt if available
+        if self.custom_prompt and self.groq_wrapper.client:
+            logger.info("Testing custom prompt with Groq API...")
+            test_messages = [
+                {
+                    "role": "system",
+                    "content": self.custom_prompt + " IMPORTANT: NEVER use quotation marks in your responses."
+                },
+                {
+                    "role": "user",
+                    "content": "Test prompt"
+                }
+            ]
+            try:
+                test_response = self.groq_wrapper.generate_completion(test_messages)
+                logger.info(f"Test response from Groq: {test_response}")
+            except Exception as e:
+                logger.error(f"Error testing custom prompt: {e}")
+                logger.warning("Will fall back to default prompt if needed")
             # Test the Groq wrapper
             test_response = self.groq_wrapper.generate_completion("Say hello!")
             logger.info(f"Test response from Groq: {test_response}")
