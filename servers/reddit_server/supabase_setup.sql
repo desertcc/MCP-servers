@@ -13,6 +13,7 @@ CREATE TABLE reddit_bots (
   keywords         text[],                    -- PostgreSQL array, e.g. '{slime, crafts}'
   fixed_subs       text[],                    -- optional curated sub list
   groq_prompt      text,                      -- custom system prompt
+  bot_type         text DEFAULT 'general',    -- 'logistics', 'slime', 'general', etc.
   max_replies      int   DEFAULT 3,
   max_upvotes      int   DEFAULT 6,
   max_subs         int   DEFAULT 3,
@@ -55,20 +56,7 @@ INSERT INTO excluded_subreddits (subreddit, reason) VALUES
 ('unpopularopinion', 'Controversial topics');
 
 -- Example data for testing (DO NOT USE IN PRODUCTION - REPLACE WITH REAL CREDENTIALS)
-INSERT INTO reddit_bots (
-  id, 
-  reddit_client_id, 
-  reddit_secret, 
-  reddit_refresh, 
-  user_agent, 
-  keywords, 
-  fixed_subs, 
-  groq_prompt, 
-  max_replies, 
-  max_upvotes, 
-  max_subs, 
-  active
-) VALUES 
+INSERT INTO reddit_bots (id, reddit_client_id, reddit_secret, reddit_refresh, user_agent, keywords, fixed_subs, groq_prompt, bot_type, max_replies, max_upvotes, max_subs, active) VALUES 
 (
   'slime', 
   'your_client_id_for_slime', 
@@ -83,6 +71,7 @@ INSERT INTO reddit_bots (
     'homeimprovement', 'organization', 'declutter', 'cleaningtips', 'homehacks'
   ], 
   'You are a POSITIVE and SUPPORTIVE Reddit commenter who loves slime crafts. Keep replies super brief (1-2 sentences, max 25 words). Your replies MUST be warm, encouraging, and helpful - never confused, dismissive, or negative.', 
+  'slime', 
   3, 
   6, 
   3, 
@@ -97,6 +86,7 @@ INSERT INTO reddit_bots (
   ARRAY['trucks', 'vehicles', 'mechanics', 'automotive', 'offroad'], 
   NULL, 
   'You are a POSITIVE and SUPPORTIVE Reddit commenter who loves trucks and vehicles. Keep replies super brief (1-2 sentences, max 25 words). Your replies MUST be warm, encouraging, and helpful - never confused, dismissive, or negative.', 
+  'logistics', 
   2, 
   4, 
   2, 
@@ -116,6 +106,7 @@ INSERT INTO reddit_bots (
     'diesel', 'mechanicadvice', 'truckmaintenance', 'trucking_jobs', 'truckdrivers'
   ], 
   'You are a POSITIVE and SUPPORTIVE Reddit commenter who works in the trucking industry. Keep replies super brief (1-2 sentences, max 25 words). Your replies MUST be warm, encouraging, and helpful - never confused, dismissive, or negative.', 
+  'logistics', 
   2, 
   4, 
   3, 

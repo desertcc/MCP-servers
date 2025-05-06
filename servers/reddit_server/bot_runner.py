@@ -454,20 +454,33 @@ class RedditBot:
 
         logger.info(f"Reply sentiment — Polarity: {polarity:.2f}, Subjectivity: {subjectivity:.2f}")
 
-        if polarity < 0.1:
+        # Get bot type from config (defaults to 'general' if not specified)
+        bot_type = self.config.get('bot_type', 'general').lower()
+        
+        # Different sentiment thresholds based on bot type
+        if bot_type == 'logistics':
+            # Logistics bots can be slightly negative (discussing industry challenges)
+            min_polarity = -0.1
+        elif bot_type == 'slime':
+            # Slime bots should be more positive (crafts are fun!)
+            min_polarity = 0.0
+        else:
+            # Default for other bots
+            min_polarity = -0.05
+        
+        if polarity < min_polarity:
             logger.warning(f"Rejected reply due to low sentiment score ({polarity:.2f}): {reply}")
             return False
 
         # 2. Keyword-based rejection for obviously toxic or dismissive replies
         negative_patterns = [
-            "no idea", "don't know", "not sure", "can't help", "sorry", 
+            "no idea", "don't know", "not sure", "can't help", 
             "don't understand", "what are you talking about", "confused",
-            "negative", "bad", "terrible", "awful", "hate", "dislike",
-            "stupid", "dumb", "idiot", "fool", "wrong", "incorrect",
-            "waste", "boring", "lame", "weird", "strange", "odd",
-            "not good", "not great", "not worth", "wouldn't", "shouldn't",
+            "terrible", "awful", "hate", 
+            "stupid", "dumb", "idiot", "fool", 
+            "waste", "boring", "lame", 
             "can't stand", "annoying", "irritating", "frustrating",
-            "wtf", "what the", "huh?", "eh?", "um", "uh"
+            "wtf", "what the"
         ]
 
         for pattern in negative_patterns:
@@ -480,8 +493,8 @@ class RedditBot:
             logger.warning(f"Rejected reply due to short length: {reply}")
             return False
 
-        # 4. Reject questions unless clearly positive
-        if reply.count('?') > 0 and not any(word in reply_lower for word in ["cool", "awesome", "nice", "love", "great"]):
+        # 4. Reject questions for non-logistics bots unless clearly positive
+        if bot_type != 'logistics' and reply.count('?') > 0 and not any(word in reply_lower for word in ["cool", "awesome", "nice", "love", "great"]):
             logger.warning(f"Rejected question-style reply: {reply}")
             return False
 
