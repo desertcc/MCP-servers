@@ -1,0 +1,70 @@
+name: Reddit MCP Bot Group 2
+
+on:
+  schedule:
+    - cron: "12 14 * * *"   # 7:12 AM PST
+    - cron: "38 17 * * *"   # 10:38 AM PST
+    - cron: "18 20 * * *"   # 1:18 PM PST
+    - cron: "33 22 * * *"   # 3:33 PM PST
+    - cron: "3 6 * * *"     # 11:03 PM PST
+  workflow_dispatch:
+    inputs:
+      bot_id:
+        description: 'Specific bot ID to run (leave empty to run all)'
+        required: false
+
+jobs:
+  run-bot:
+    runs-on: ubuntu-22.04
+    strategy:
+      matrix:
+        bot_id: ["slime3", "slime4", "logistics3", "logistics4"]
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+      GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10.12'
+
+      - name: Print Python version
+        run: python --version
+        
+      - name: Unset proxy environment variables
+        run: |
+          unset HTTP_PROXY HTTPS_PROXY http_proxy https_proxy no_proxy NO_PROXY || true
+          echo "Checking for proxy variables:"
+          env | grep -i proxy || echo "No proxy variables found"
+
+      - name: Install dependencies
+        run: pip install -r servers/reddit_server/requirements.txt
+        
+      - name: Install specific Groq version
+        run: |
+          pip uninstall -y groq
+          pip install groq==0.4.1
+          
+      - name: Print debug information
+        run: |
+          echo "Installed packages:"
+          pip list
+          echo "\nGroq version:"
+          python -c "import groq; print(groq.__version__)"
+          echo "\nEnvironment variables:"
+          env | grep -i proxy || echo "No proxy variables found"
+
+      - name: Run Groq test script
+        run: |
+          python servers/reddit_server/github_actions_test.py
+
+      - name: Run bot
+        if: ${{ github.event.inputs.bot_id == '' || matrix.bot_id == github.event.inputs.bot_id }}
+        run: |
+          # python servers/reddit_server/bot_runner.py --dry-run --max-subreddits 20 --max-replies 2 --max-upvotes 4 --bot-id ${{ matrix.bot_id }}
+          python servers/reddit_server/bot_runner.py --max-subreddits 20 --max-replies 2 --max-upvotes 4 --bot-id ${{ matrix.bot_id }}
