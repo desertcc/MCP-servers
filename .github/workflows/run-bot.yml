@@ -1,12 +1,12 @@
-name: Reddit MCP Bot
+name: Reddit MCP Bot Group 1
 
 on:
   schedule:
-    - cron: "28 13 * * *"   # 6:28 AM PST
-    - cron: "34 16 * * *"   # 9:34 AM PST
-    - cron: "8 19 * * *"    # 12:08 PM PST
-    - cron: "55 21 * * *"   # 2:55 PM PST
-    - cron: "48 4 * * *"    # 9:48 PM PST
+    - cron: "23 13 * * *"   # 6:23 AM PST
+    - cron: "42 16 * * *"   # 9:42 AM PST
+    - cron: "17 19 * * *"   # 12:17 PM PST
+    - cron: "51 21 * * *"   # 2:51 PM PST
+    - cron: "37 4 * * *"    # 9:37 PM PST
   workflow_dispatch:
     inputs:
       bot_id:
@@ -18,7 +18,7 @@ jobs:
     runs-on: ubuntu-22.04  # 👈 fix: use a stable Ubuntu version
     strategy:
       matrix:
-        bot_id: ["logistics1","logistics2"]
+        bot_id: ["logistics1","logistics2","slime","slime2"]
     env:
       SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
       SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
