@@ -266,7 +266,7 @@ if __name__ == "__main__":
         print(f"Bot has {len(config.get('keywords', []))} keywords and {len(config.get('fixed_subs', []))} fixed subreddits")
         
         # Don't print sensitive information
-        safe_keys = ['id', 'keywords', 'fixed_subs', 'max_replies', 'max_upvotes', 'max_subs', 'active']
+        safe_keys = ['id', 'keywords', 'fixed_subs', 'max_replies', 'max_upvotes', 'max_subs', 'active', 'bot_type', 'style_tag']
         safe_config = {k: config[k] for k in safe_keys if k in config}
         print(f"Config (safe fields only): {safe_config}")
     except Exception as e:

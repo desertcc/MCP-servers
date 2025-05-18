@@ -231,10 +231,18 @@ class RedditBot:
         self.replies_made = 0
         self.upvotes_made = 0
         
-        # Bot ID for logging
+        # Bot ID and style tag for logging and personalization
         self.bot_id = self.config.get('id', 'default')
+        self.style_tag = self.config.get('style_tag')
+        self.bot_type = self.config.get('bot_type', 'general')
         
         logger.info(f"Initializing Reddit Bot ID: {self.bot_id} (Dry Run: {dry_run}, Read Only: {self.read_only})")
+        logger.info(f"Bot configuration loaded from Supabase: {self.config}")
+        if self.style_tag:
+            logger.info(f"Bot style_tag from Supabase: {self.style_tag}")
+        else:
+            logger.info("No style_tag found in Supabase configuration")
+        logger.info(f"Bot type from Supabase: {self.bot_type}")
         logger.info(f"Activity limits: {self.max_subreddits} subreddits, {self.max_replies} replies, {self.max_upvotes} upvotes")
         logger.info(f"Using {len(self.keywords)} keywords and {len(self.fixed_subs)} fixed subreddits")
         
@@ -371,7 +379,9 @@ class RedditBot:
         interaction = {
             "timestamp": datetime.now().isoformat(),
             "action": action,
-            "subreddit": subreddit
+            "subreddit": subreddit,
+            "bot_id": self.bot_id,
+            "style_tag": self.style_tag
         }
         
         if post_id:
@@ -521,7 +531,7 @@ Post Content: {post_content}"""
                         "content": clean_prompt
                     }
                 ]
-                reply = self.groq_wrapper.generate_completion(messages)
+                reply = self.groq_wrapper.generate_completion(messages, style_tag=self.style_tag)
             else:
                 # Otherwise use the default prompt in the groq_wrapper
                 prompt = f"""Post Title: {post_title}
@@ -529,7 +539,7 @@ Post Content: {post_content}"""
 Post Content: {post_content}
 
 Please write a brief, friendly, and supportive reply to this Reddit post. Keep it under 25 words."""
-                reply = self.groq_wrapper.generate_completion(prompt)
+                reply = self.groq_wrapper.generate_completion(prompt, style_tag=self.style_tag)
             
             # Strip any quotation marks from the reply
             reply = reply.strip()

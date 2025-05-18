@@ -7,6 +7,7 @@ import os
 import sys
 import logging
 import traceback
+import re
 from dotenv import load_dotenv
 
 # Load environment variables
@@ -127,7 +128,7 @@ class GroqWrapper:
             logger.error(f"Failed to import or initialize Groq: {e}")
             logger.error(traceback.format_exc())
     
-    def generate_completion(self, prompt_or_messages, model="llama3-8b-8192", max_tokens=300, temperature=0.7):
+    def generate_completion(self, prompt_or_messages, model="llama3-8b-8192", max_tokens=300, temperature=0.7, style_tag=None):
         """Generate a completion using the Groq API
         
         Args:
@@ -135,6 +136,7 @@ class GroqWrapper:
             model: The Groq model to use
             max_tokens: Maximum number of tokens to generate
             temperature: Temperature for generation (higher = more creative)
+            style_tag: Optional style tag to customize the prompt (e.g., 'chill-driver', 'grumpy-vet')
         """
         if not self.client:
             logger.warning("Groq client is not available, using fallback response")
@@ -144,15 +146,24 @@ class GroqWrapper:
             # Determine if prompt_or_messages is a string prompt or a messages array
             if isinstance(prompt_or_messages, str):
                 # If it's a string, use the default message structure
+                system_content = (
+                    "You are a POSITIVE and SUPPORTIVE Reddit commenter. Keep replies super brief (1-2 sentences, max 25 words). "
+                    "Your replies MUST be warm, encouraging, and helpful - never confused, dismissive, or negative. "
+                    "Sound casual and warm like a fellow Redditor - not formal. Use conversational tone. "
+                    "No quotes, no greetings, no summarizing. If unsure, be generally positive about creativity or sharing."
+                )
+                
+                # Prepend style tag if provided and update word limit instruction
+                if style_tag:
+                    style_prefix = f"<<style:{style_tag}>> "
+                    logger.info(f"Using style tag: {style_tag}")
+                    # Update the system content to explicitly mention the 15-word limit
+                    system_content = style_prefix + system_content.replace("max 25 words", "max 15 words")
+                
                 messages = [
                     {
                         "role": "system",
-                        "content": (
-                            "You are a POSITIVE and SUPPORTIVE Reddit commenter. Keep replies super brief (1-2 sentences, max 25 words). "
-                            "Your replies MUST be warm, encouraging, and helpful - never confused, dismissive, or negative. "
-                            "Sound casual and warm like a fellow Redditor - not formal. Use conversational tone. "
-                            "No quotes, no greetings, no summarizing. If unsure, be generally positive about creativity or sharing."
-                        )
+                        "content": system_content
                     },
                     {
                         "role": "user",
@@ -160,8 +171,25 @@ class GroqWrapper:
                     }
                 ]
             else:
-                # If it's already a messages array, use it directly
-                messages = prompt_or_messages
+                # If it's already a messages array, use it directly but modify system message if style_tag is provided
+                messages = list(prompt_or_messages)  # Create a copy to avoid modifying the original
+                
+                # If style_tag is provided and there's a system message, prepend the style tag and update word limit
+                if style_tag:
+                    logger.info(f"Using style tag with custom messages: {style_tag}")
+                    for i, message in enumerate(messages):
+                        if message.get("role") == "system":
+                            # Prepend style tag to system message and update word limit instruction
+                            style_prefix = f"<<style:{style_tag}>> "
+                            content = message["content"]
+                            # If there's a word limit mentioned, update it to 15 words
+                            if "max" in content and "words" in content:
+                                content = re.sub(r'max \d+ words', 'max 15 words', content)
+                            else:
+                                # Add the 15-word limit instruction if not present
+                                content += " Keep replies brief (max 15 words)."
+                            messages[i]["content"] = style_prefix + content
+                            break
             
             # Log what we're sending to Groq
             logger.info(f"Sending request to Groq model: {model}")
@@ -174,6 +202,24 @@ class GroqWrapper:
             )
             
             reply = completion.choices[0].message.content.strip()
+            
+            # Enforce the 15-word limit for style_tag responses
+            if style_tag:
+                words = reply.split()
+                word_count = len(words)
+                logger.info(f"Response word count with style_tag '{style_tag}': {word_count} words")
+                
+                # If response exceeds 15 words, trim it and add a warning log
+                if word_count > 15:
+                    logger.warning(f"Response exceeds 15-word limit: {word_count} words. Trimming to 15 words.")
+                    # Trim to 15 words, trying to keep a complete sentence if possible
+                    trimmed_words = words[:15]
+                    # Check if the last word ends with punctuation
+                    if not any(trimmed_words[-1].endswith(p) for p in ['.', '!', '?']):
+                        # Add a period if there's no punctuation
+                        trimmed_words[-1] = trimmed_words[-1] + '.'
+                    reply = ' '.join(trimmed_words)
+            
             logger.info(f"Generated reply: {reply}")
             return reply
         except Exception as e:
