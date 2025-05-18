@@ -147,18 +147,18 @@ class GroqWrapper:
             if isinstance(prompt_or_messages, str):
                 # If it's a string, use the default message structure
                 system_content = (
-                    "You are a POSITIVE and SUPPORTIVE Reddit commenter. Keep replies super brief (1-2 sentences, max 25 words). "
+                    "You are a POSITIVE and SUPPORTIVE Reddit commenter. Keep replies concise and to the point. "
                     "Your replies MUST be warm, encouraging, and helpful - never confused, dismissive, or negative. "
                     "Sound casual and warm like a fellow Redditor - not formal. Use conversational tone. "
                     "No quotes, no greetings, no summarizing. If unsure, be generally positive about creativity or sharing."
                 )
                 
-                # Prepend style tag if provided and update word limit instruction
+                # Prepend style tag if provided
                 if style_tag:
                     style_prefix = f"<<style:{style_tag}>> "
                     logger.info(f"Using style tag: {style_tag}")
-                    # Update the system content to explicitly mention the 15-word limit
-                    system_content = style_prefix + system_content.replace("max 25 words", "max 15 words")
+                    # Add the style tag to the system content without enforcing a word limit
+                    system_content = style_prefix + system_content
                 
                 messages = [
                     {
