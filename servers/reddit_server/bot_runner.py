@@ -202,7 +202,8 @@ class RedditBot:
                  max_subreddits: int = DEFAULT_MAX_SUBREDDITS_PER_RUN, 
                  max_replies: int = DEFAULT_MAX_TOTAL_REPLIES_PER_RUN, 
                  max_upvotes: int = DEFAULT_MAX_TOTAL_UPVOTES_PER_RUN,
-                 config: Dict[str, Any] = None):
+                 config: Dict[str, Any] = None,
+                 reddit_client = None):
         """Initialize the Reddit bot with API credentials.
         
         Args:
@@ -248,8 +249,12 @@ class RedditBot:
         
         # Initialize Reddit API client
         try:
+            # Use provided reddit_client if available (for testing)
+            if reddit_client is not None:
+                logger.info("Using provided Reddit client (likely a mock for testing)")
+                self.reddit = reddit_client
             # Use Reddit's read-only mode which doesn't require authentication
-            if self.read_only:
+            elif self.read_only:
                 logger.info("Using Reddit's read-only mode")
                 self.reddit = praw.Reddit(
                     client_id=os.environ.get("REDDIT_CLIENT_ID"),
