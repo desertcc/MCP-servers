@@ -1,4 +1,4 @@
-name: Reddit MCP Bot Group 2
+name: Reddit MCP Bot Group 2a
 
 on:
   schedule:
@@ -6,7 +6,7 @@ on:
     - cron: "38 17 * * *"   # 10:38 AM PST
     - cron: "18 20 * * *"   # 1:18 PM PST
     - cron: "33 22 * * *"   # 3:33 PM PST
-    - cron: "3 6 * * *"     # 11:03 PM PST
+    - cron: "45 6 * * *"     # 11:45 PM PST
   workflow_dispatch:
     inputs:
       bot_id:

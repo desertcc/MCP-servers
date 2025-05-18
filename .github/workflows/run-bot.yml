@@ -18,7 +18,7 @@ jobs:
     runs-on: ubuntu-22.04  # 👈 fix: use a stable Ubuntu version
     strategy:
       matrix:
-        bot_id: ["slime", "slime2", "logistics1","logistics2"]
+        bot_id: ["logistics1","logistics2"]
     env:
       SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
       SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
@@ -69,7 +69,7 @@ jobs:
       - name: Run bot
         if: ${{ github.event.inputs.bot_id == '' || matrix.bot_id == github.event.inputs.bot_id }}
         run: |
-          python servers/reddit_server/bot_runner.py --dry-run --max-subreddits 20 --max-replies 2 --max-upvotes 4 --bot-id ${{ matrix.bot_id }}
-          # python servers/reddit_server/bot_runner.py --max-subreddits 20 --max-replies 2 --max-upvotes 4 --bot-id ${{ matrix.bot_id }}
+          # python servers/reddit_server/bot_runner.py --dry-run --max-subreddits 20 --max-replies 2 --max-upvotes 4 --bot-id ${{ matrix.bot_id }}
+          python servers/reddit_server/bot_runner.py --max-subreddits 20 --max-replies 2 --max-upvotes 4 --bot-id ${{ matrix.bot_id }}
 
 
