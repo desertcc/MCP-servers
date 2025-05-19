@@ -139,8 +139,8 @@ class GroqWrapper:
             style_tag: Optional style tag to customize the prompt (e.g., 'chill-driver', 'grumpy-vet')
         """
         if not self.client:
-            logger.warning("Groq client is not available, using fallback response")
-            return "This looks great! Thanks for sharing your work!"
+            logger.warning("Groq client is not available, no fallback available")
+            return None
         
         try:
             # Determine if prompt_or_messages is a string prompt or a messages array
@@ -150,7 +150,9 @@ class GroqWrapper:
                     "You are a POSITIVE and SUPPORTIVE Reddit commenter. Keep replies concise and to the point. "
                     "Your replies MUST be warm, encouraging, and helpful - never confused, dismissive, or negative. "
                     "Sound casual and warm like a fellow Redditor - not formal. Use conversational tone. "
-                    "No quotes, no greetings, no summarizing. If unsure, be generally positive about creativity or sharing."
+                    "No quotes, no greetings, no summarizing. "
+                    "IMPORTANT: If you don't have anything helpful or relevant to say about the specific post, respond with only the word 'SKIP'. "
+                    "Never post generic responses like 'This looks great!' or 'Thanks for sharing!' if they don't relate to the post content."
                 )
                 
                 # Prepend style tag if provided
@@ -179,15 +181,14 @@ class GroqWrapper:
                     logger.info(f"Using style tag with custom messages: {style_tag}")
                     for i, message in enumerate(messages):
                         if message.get("role") == "system":
-                            # Prepend style tag to system message and update word limit instruction
+                            # Prepend style tag to system message and add skip instruction
                             style_prefix = f"<<style:{style_tag}>> "
                             content = message["content"]
-                            # If there's a word limit mentioned, update it to 15 words
-                            if "max" in content and "words" in content:
-                                content = re.sub(r'max \d+ words', 'max 15 words', content)
-                            else:
-                                # Add the 15-word limit instruction if not present
-                                content += " Keep replies brief (max 15 words)."
+                            
+                            # Add the skip instruction if not already present
+                            skip_instruction = "IMPORTANT: If you don't have anything helpful or relevant to say about the specific post, respond with only the word 'SKIP'. Never post generic responses."
+                            if "SKIP" not in content:
+                                content += f" {skip_instruction}"
                             messages[i]["content"] = style_prefix + content
                             break
             
@@ -203,29 +204,23 @@ class GroqWrapper:
             
             reply = completion.choices[0].message.content.strip()
             
-            # Enforce the 15-word limit for style_tag responses
+            # Check if the reply is a SKIP instruction
+            if reply.strip().upper() == "SKIP":
+                logger.info("Groq returned SKIP instruction, indicating no appropriate response")
+                return None
+                
+            # Log word count for informational purposes
             if style_tag:
                 words = reply.split()
                 word_count = len(words)
                 logger.info(f"Response word count with style_tag '{style_tag}': {word_count} words")
-                
-                # If response exceeds 15 words, trim it and add a warning log
-                if word_count > 15:
-                    logger.warning(f"Response exceeds 15-word limit: {word_count} words. Trimming to 15 words.")
-                    # Trim to 15 words, trying to keep a complete sentence if possible
-                    trimmed_words = words[:15]
-                    # Check if the last word ends with punctuation
-                    if not any(trimmed_words[-1].endswith(p) for p in ['.', '!', '?']):
-                        # Add a period if there's no punctuation
-                        trimmed_words[-1] = trimmed_words[-1] + '.'
-                    reply = ' '.join(trimmed_words)
             
             logger.info(f"Generated reply: {reply}")
             return reply
         except Exception as e:
             logger.error(f"Error generating completion: {e}")
             logger.error(traceback.format_exc())
-            return "This looks great! Thanks for sharing your work!"
+            return None
 
 # Test the wrapper if run directly
 if __name__ == "__main__":

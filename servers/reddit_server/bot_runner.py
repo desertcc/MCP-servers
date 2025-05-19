@@ -454,14 +454,80 @@ class RedditBot:
             logger.error(f"Error discovering subreddits: {e}")
             return []
     
-    def check_reply_sentiment(self, reply: str) -> bool:
-        """Check if a reply is appropriate using sentiment score + keyword filter.
+    def is_on_topic(self, post_title: str, post_content: str, reply: str) -> bool:
+        """Check if a reply is on-topic for the post.
         
+        Args:
+            post_title: The title of the post
+            post_content: The content of the post
+            reply: The reply text to check
+            
         Returns:
-            bool: True if the reply is positive and appropriate, False otherwise
+            bool: True if the reply is on-topic, False otherwise
         """
+        # Skip empty replies
+        if not reply or not reply.strip():
+            logger.warning("Empty reply detected")
+            return False
+            
+        # Extract keywords from post and reply
+        post_text = (post_title + " " + post_content).lower()
+        reply_text = reply.lower()
+        
+        # Simple keyword matching - check if any words from the post appear in the reply
+        # Exclude common stop words
+        stop_words = set(['a', 'an', 'the', 'and', 'or', 'but', 'is', 'are', 'was', 'were', 'be', 'been', 'being',
+                         'in', 'on', 'at', 'to', 'for', 'with', 'by', 'about', 'like', 'through', 'over', 'before',
+                         'after', 'between', 'under', 'above', 'of', 'from', 'up', 'down', 'this', 'that', 'these',
+                         'those', 'my', 'your', 'his', 'her', 'its', 'our', 'their', 'mine', 'yours', 'hers', 'ours',
+                         'theirs', 'i', 'you', 'he', 'she', 'it', 'we', 'they', 'what', 'which', 'who', 'whom',
+                         'whose', 'where', 'when', 'why', 'how', 'all', 'any', 'both', 'each', 'few', 'more', 'most',
+                         'other', 'some', 'such', 'no', 'nor', 'not', 'only', 'own', 'same', 'so', 'than', 'too',
+                         'very', 's', 't', 'can', 'will', 'just', 'don', 'should', 'now', 'd', 'll', 'm', 'o', 're',
+                         've', 'y', 'ain', 'aren', 'couldn', 'didn', 'doesn', 'hadn', 'hasn', 'haven', 'isn', 'ma',
+                         'mightn', 'mustn', 'needn', 'shan', 'shouldn', 'wasn', 'weren', 'won', 'wouldn'])
+        
+        # Extract meaningful words from post and reply
+        post_words = [word for word in post_text.split() if word.isalnum() and word not in stop_words and len(word) > 3]
+        reply_words = [word for word in reply_text.split() if word.isalnum() and word not in stop_words and len(word) > 3]
+        
+        # Check for shared keywords
+        shared_keywords = set(post_words) & set(reply_words)
+        if shared_keywords:
+            logger.info(f"Found shared keywords between post and reply: {shared_keywords}")
+            return True
+            
+        # If no shared keywords, check for generic patterns that indicate off-topic replies
+        generic_patterns = [
+            "this looks great", "thanks for sharing", "awesome work", "nice job", "good work", 
+            "thanks for posting", "love this", "love it", "love your", "amazing", "wonderful", 
+            "keep it up", "keep up the good work", "well done", "great job", "fantastic"
+        ]
+        
+        for pattern in generic_patterns:
+            if pattern in reply_text:
+                logger.warning(f"Reply contains generic pattern: {pattern}")
+                return False
+                
+        # If we've made it this far, give the benefit of the doubt
+        return True
+        
+    def check_reply_sentiment(self, reply: str) -> bool:
+        """Check if a reply has appropriate sentiment and content.
+        
+        Args:
+            reply: The reply text to check
+            
+        Returns:
+            bool: True if the reply is appropriate, False otherwise
+        """
+        # Skip empty replies
+        if not reply or not reply.strip():
+            logger.warning("Empty reply detected")
+            return False
+            
         reply_lower = reply.lower()
-
+            
         # 1. TextBlob sentiment analysis
         blob = TextBlob(reply)
         polarity = blob.sentiment.polarity  # -1 (very negative) to +1 (very positive)
@@ -555,9 +621,14 @@ Please write a brief, friendly, and supportive reply to this Reddit post. Keep i
             reply = reply.replace('"', '')
             reply = reply.replace("'", '')
             
-            # Check if the reply is appropriate
+            # Check if the reply is appropriate (sentiment check)
             if not self.check_reply_sentiment(reply):
                 logger.warning(f"Generated reply failed sentiment check: {reply}")
+                return None
+                
+            # Check if the reply is on-topic
+            if not self.is_on_topic(post_title, post_content, reply):
+                logger.warning(f"Generated reply failed topic check: {reply}")
                 return None
                 
             return reply
@@ -656,6 +727,12 @@ Please write a brief, friendly, and supportive reply to this Reddit post. Keep i
                 
                 # Generate and post reply
                 reply_text = self.generate_reply(post.title, post.selftext)
+                
+                # Skip if no appropriate reply could be generated
+                if reply_text is None:
+                    logger.info(f"Skipping post {post.id} - no appropriate reply could be generated")
+                    self._log_interaction("skip", subreddit_name, post_id=post.id, content="Failed sentiment/topic check")
+                    continue
                 
                 if not self.dry_run and not self.read_only:
                     try:
