@@ -18,7 +18,7 @@ jobs:
     runs-on: ubuntu-22.04
     strategy:
       matrix:
-        bot_id: ["slime3", "slime4", "logistics3", "logistics4"]
+        bot_id: ["slime3", "slime4", "logistics3", "logistics4","ai2"]
     env:
       SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
       SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
