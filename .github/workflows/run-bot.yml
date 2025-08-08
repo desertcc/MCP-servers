@@ -1,12 +1,12 @@
 name: Reddit MCP Bot Group 1
 
 on:
-  schedule:
-    - cron: "23 13 * * *"   # 6:23 AM PST
-    - cron: "42 16 * * *"   # 9:42 AM PST
-    - cron: "17 19 * * *"   # 12:17 PM PST
-    - cron: "51 21 * * *"   # 2:51 PM PST
-    - cron: "37 4 * * *"    # 9:37 PM PST
+  # schedule:
+   # - cron: "23 13 * * *"   # 6:23 AM PST
+   # - cron: "42 16 * * *"   # 9:42 AM PST
+   # - cron: "17 19 * * *"   # 12:17 PM PST
+   # - cron: "51 21 * * *"   # 2:51 PM PST
+   # - cron: "37 4 * * *"    # 9:37 PM PST
   workflow_dispatch:
     inputs:
       bot_id:
